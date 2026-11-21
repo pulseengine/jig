@@ -1,0 +1,318 @@
+# jig baseline: the checks every pulseengine repository needs and no
+# repository should own alone. Called, never triggered directly:
+#
+#   baseline:
+#     uses: pulseengine/jig/.github/workflows/baseline.yml@<40-hex-sha>
+#
+# Pin by full SHA. A jig change reaches a caller only through that caller's
+# own bump PR (REQ-012). Design: docs/design.md. Every job here is light
+# work, so the pool is fixed (plant guard refuses a runner taken from an
+# input); the github context is the caller's, so the fail-closed fork guard
+# sees the caller's event and sends a fork PR to the hosted runner.
+#
+# No secrets are declared or used (REQ-011). Tools are fetched by exact
+# version and checked against a sha256 recorded from the release's
+# cosign-verified SHA256SUMS.txt; sums are never fetched at run time
+# (REQ-010, DD-013).
+name: baseline
+
+on:
+  workflow_call:
+    inputs:
+      audit:
+        description: "Cargo auditor: cargo-audit, cargo-deny or none (none needs no Cargo.lock in the tree)"
+        type: string
+        default: cargo-audit
+      bazel:
+        description: "Require --lockfile_mode=error in .bazelrc"
+        type: boolean
+        default: false
+      controls:
+        description: "plant manifest"
+        type: string
+        default: ci-controls.toml
+      controls-only:
+        description: "Space-separated plant control ids to run per PR (empty: skip the controls job)"
+        type: string
+        default: ""
+      guard-config:
+        description: "plant guard config; empty means plant's default lookup"
+        type: string
+        default: ""
+      enforce-skips:
+        description: "false = shadow mode: every class is selected. Set true only behind a merge queue (DD-004)"
+        type: boolean
+        default: false
+      jig-from-source:
+        description: "Build jig from the caller's checkout. Only pulseengine/jig itself may set this (phase 0)"
+        type: boolean
+        default: false
+    outputs:
+      run_all:
+        value: ${{ jobs.classify.outputs.run_all }}
+      build:
+        value: ${{ jobs.classify.outputs.build }}
+      unit_test:
+        value: ${{ jobs.classify.outputs.unit_test }}
+      integration:
+        value: ${{ jobs.classify.outputs.integration }}
+      emulator:
+        value: ${{ jobs.classify.outputs.emulator }}
+      coverage:
+        value: ${{ jobs.classify.outputs.coverage }}
+      mutation:
+        value: ${{ jobs.classify.outputs.mutation }}
+      fuzz:
+        value: ${{ jobs.classify.outputs.fuzz }}
+      bench:
+        value: ${{ jobs.classify.outputs.bench }}
+      docs:
+        value: ${{ jobs.classify.outputs.docs }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # jig itself: set by the commit that follows each signed jig release
+  # (docs/releasing.md). Empty until v0.1.0 is cut; callers other than
+  # pulseengine/jig cannot run the baseline before then.
+  JIG_VERSION: ""
+  JIG_SHA256: ""
+  # plant v0.3.0, x86_64-unknown-linux-musl, from SHA256SUMS.txt verified
+  # with cosign against release.yml@refs/tags/v0.3.0 on 2026-11-21.
+  # v0.3.0 predates plant#33: its guard rejects every jig caller. Bump to the
+  # first release that carries trusted_workflows before any pilot.
+  PLANT_VERSION: v0.3.0
+  PLANT_SHA256: de3582319ae8476c3dfc74567aef9396b09c91eb28a59cb7cec776d678469bed
+  # sieve v0.2.1 (the version the covalent 2026.11.19 layer composes),
+  # x86_64-unknown-linux-musl, verified the same way on 2026-11-21.
+  SIEVE_VERSION: v0.2.1
+  SIEVE_SHA256: 1856630c196014c1bbfc65be81607ee26fb3de545b00d579b08db1b6b31e92ca
+
+jobs:
+  guard:
+    name: guard
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: fetch pinned plant
+        run: |
+          d="$RUNNER_TEMP/plant"; mkdir -p "$d"; cd "$d"
+          a="plant-$PLANT_VERSION-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL -o "$a" "https://github.com/pulseengine/plant/releases/download/$PLANT_VERSION/$a"
+          echo "$PLANT_SHA256  $a" | sha256sum -c -
+          tar -xzf "$a" ./plant
+          echo "$d" >> "$GITHUB_PATH"
+      - name: plant guard
+        env:
+          GUARD_CONFIG: ${{ inputs.guard-config }}
+        run: |
+          plant --version
+          if [ -n "$GUARD_CONFIG" ]; then plant guard . --config "$GUARD_CONFIG"; else plant guard .; fi
+
+  pins:
+    name: pins
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
+        if: inputs.jig-from-source
+        with:
+          toolchain: 1.99.1
+      - name: install jig
+        env:
+          FROM_SOURCE: ${{ inputs.jig-from-source }}
+          REPO: ${{ github.repository }}
+        run: |
+          d="$RUNNER_TEMP/jig"; mkdir -p "$d"
+          if [ "$FROM_SOURCE" = true ]; then
+            [ "$REPO" = pulseengine/jig ] || { echo "jig-from-source is only for pulseengine/jig"; exit 1; }
+            cargo build --locked --release --target-dir "$RUNNER_TEMP/jig-target"
+            cp "$RUNNER_TEMP/jig-target/release/jig" "$d/"
+          else
+            [ -n "$JIG_SHA256" ] || { echo "no jig release is pinned in this baseline.yml"; exit 1; }
+            a="jig-$JIG_VERSION-x86_64-unknown-linux-musl.tar.gz"
+            (cd "$d" && curl -fsSL -o "$a" "https://github.com/pulseengine/jig/releases/download/$JIG_VERSION/$a" \
+              && echo "$JIG_SHA256  $a" | sha256sum -c - && tar -xzf "$a" ./jig)
+          fi
+          echo "$d" >> "$GITHUB_PATH"
+      - name: jig pins
+        run: |
+          jig --version
+          jig pins .
+
+  supply:
+    name: supply
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
+        with:
+          toolchain: 1.99.1
+      # Every tracked file named exactly Cargo.lock binds under --locked, and
+      # every Cargo.toml workspace root has one (REQ-006).
+      - name: cargo lockfiles are fresh
+        run: |
+          n=0
+          while IFS= read -r lock; do
+            n=$((n+1)); dir=$(dirname "$lock")
+            echo "::group::cargo metadata --locked in $dir"
+            cargo metadata --locked --format-version 1 --manifest-path "$dir/Cargo.toml" > /dev/null
+            echo "::endgroup::"
+          done < <(git ls-files -- '*Cargo.lock' | awk -F/ '$NF == "Cargo.lock"')
+          echo "$n Cargo.lock file(s) checked"
+          if [ "$n" -eq 0 ] && git ls-files -- '*Cargo.toml' | grep -q .; then
+            echo "Cargo.toml is tracked but no Cargo.lock is: commit the lockfile"; exit 1
+          fi
+      - name: cargo audit
+        if: inputs.audit != 'none'
+        env:
+          AUDIT: ${{ inputs.audit }}
+        run: |
+          case "$AUDIT" in
+            cargo-audit) cargo install --locked cargo-audit --version 0.22.1 ;;
+            cargo-deny) cargo install --locked cargo-deny --version 0.22.0 ;;
+            *) echo "unknown audit input '$AUDIT'"; exit 1 ;;
+          esac
+          n=0
+          while IFS= read -r lock; do
+            n=$((n+1))
+            echo "::group::$AUDIT $lock"
+            if [ "$AUDIT" = cargo-audit ]; then
+              cargo audit --file "$lock"
+            else
+              cargo deny --manifest-path "$(dirname "$lock")/Cargo.toml" check advisories
+            fi
+            echo "::endgroup::"
+          done < <(git ls-files -- '*Cargo.lock' | awk -F/ '$NF == "Cargo.lock"')
+          echo "$n Cargo.lock file(s) audited, no waivers"
+      - name: audit none means no Cargo.lock
+        if: inputs.audit == 'none'
+        run: |
+          if git ls-files -- '*Cargo.lock' | awk -F/ '$NF == "Cargo.lock"' | grep -q .; then
+            echo "audit: none, but the tree has a Cargo.lock; pick cargo-audit or cargo-deny"; exit 1
+          fi
+      # npm: the lock must match package.json, and npm audit runs on it.
+      - name: npm lockfiles
+        run: |
+          n=0
+          while IFS= read -r lock; do
+            n=$((n+1)); dir=$(dirname "$lock")
+            echo "::group::npm $lock"
+            (cd "$dir" && npm install --package-lock-only --ignore-scripts --no-audit --no-fund > /dev/null)
+            git diff --exit-code -- "$lock" || { echo "$lock is out of sync with package.json"; exit 1; }
+            (cd "$dir" && npm audit --package-lock-only --audit-level=low)
+            echo "::endgroup::"
+          done < <(git ls-files -- '*package-lock.json' | awk -F/ '$NF == "package-lock.json"')
+          echo "$n package-lock.json file(s) checked"
+      - name: bazel lockfile mode
+        if: inputs.bazel
+        run: |
+          grep -Eq '^(common|build)[[:space:]]+--lockfile_mode=error([[:space:]]|$)' .bazelrc \
+            || { echo ".bazelrc must carry 'common --lockfile_mode=error'"; exit 1; }
+          git ls-files --error-unmatch MODULE.bazel.lock > /dev/null
+
+  controls:
+    name: controls
+    if: inputs.controls-only != ''
+    # Same-repo runs only: plant executes the manifest's commands.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
+        with:
+          toolchain: 1.99.1
+      - name: fetch pinned plant
+        run: |
+          d="$RUNNER_TEMP/plant"; mkdir -p "$d"; cd "$d"
+          a="plant-$PLANT_VERSION-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL -o "$a" "https://github.com/pulseengine/plant/releases/download/$PLANT_VERSION/$a"
+          echo "$PLANT_SHA256  $a" | sha256sum -c -
+          tar -xzf "$a" ./plant
+          echo "$d" >> "$GITHUB_PATH"
+      # The ids come from the caller's reviewed workflow file, never from PR
+      # text. Only exit 0 is green; 2 (could not run) is not a pass.
+      - name: plant controls
+        env:
+          MANIFEST: ${{ inputs.controls }}
+          ONLY: ${{ inputs.controls-only }}
+          CARGO_TARGET_DIR: ${{ runner.temp }}/plant-controls-target
+        run: |
+          args=()
+          for id in $ONLY; do args+=(--only "$id"); done
+          plant --version
+          plant "$MANIFEST" "${args[@]}"
+
+  classify:
+    name: classify
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 15
+    outputs:
+      run_all: ${{ steps.all.outputs.run_all || steps.classify.outputs.run_all }}
+      build: ${{ steps.all.outputs.build || steps.classify.outputs.build }}
+      unit_test: ${{ steps.all.outputs.unit_test || steps.classify.outputs.unit_test }}
+      integration: ${{ steps.all.outputs.integration || steps.classify.outputs.integration }}
+      emulator: ${{ steps.all.outputs.emulator || steps.classify.outputs.emulator }}
+      coverage: ${{ steps.all.outputs.coverage || steps.classify.outputs.coverage }}
+      mutation: ${{ steps.all.outputs.mutation || steps.classify.outputs.mutation }}
+      fuzz: ${{ steps.all.outputs.fuzz || steps.classify.outputs.fuzz }}
+      bench: ${{ steps.all.outputs.bench || steps.classify.outputs.bench }}
+      docs: ${{ steps.all.outputs.docs || steps.classify.outputs.docs }}
+    steps:
+      # Shadow mode or a non-PR event: everything runs, sieve is not asked.
+      # Values are only ever 'true' here; nothing is written as 'false'.
+      - name: select every class
+        id: all
+        if: ${{ !inputs.enforce-skips || github.event_name != 'pull_request' }}
+        run: |
+          {
+            echo "run_all=true"
+            for c in build unit_test integration emulator coverage mutation fuzz bench docs; do echo "$c=true"; done
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.all.outcome == 'skipped'
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: fetch pinned sieve
+        if: steps.all.outcome == 'skipped'
+        run: |
+          d="$RUNNER_TEMP/sieve"; mkdir -p "$d"; cd "$d"
+          a="sieve-$SIEVE_VERSION-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL -o "$a" "https://github.com/pulseengine/sieve/releases/download/$SIEVE_VERSION/$a"
+          echo "$SIEVE_SHA256  $a" | sha256sum -c -
+          tar -xzf "$a" ./sieve
+          echo "$d" >> "$GITHUB_PATH"
+      # A refused config (exit 1 or 3) is not a pass: the job fails, and with
+      # it baseline, so every gated job runs and the verdict is red.
+      - name: sieve config is trusted
+        if: steps.all.outcome == 'skipped'
+        run: |
+          sieve --version
+          sieve check-graph --config sieve.toml --control graph-inputs
+      # sieve's own form, so sieve check-workflows can check this callee at
+      # the pinned SHA (REQ-018). It writes only the adopter's classes plus
+      # run_all; an undefined vocabulary name stays empty and so runs.
+      - name: sieve classify
+        id: classify
+        if: steps.all.outcome == 'skipped'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: sieve classify --config sieve.toml --base "$BASE_SHA" --event "$EVENT_NAME" --format github-output
