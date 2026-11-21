@@ -2,8 +2,14 @@
 
 Distilled from the proposal "Fleet CI unification" (2026-11-21), where jig is
 called ci-baseline. Numbers come from sieve's dry run and a read of every
-repo's workflow files; those marked as estimates are estimates. Everything
-here is planned, not implemented.
+repo's workflow files; those marked as estimates are estimates.
+
+**Read "v0.1.0 as built" first.** The sections after it are the proposal as
+written. Where they disagree with it, the as-built section is current. Above
+all: baseline.yml has **no classify job and no outputs**. The fixed-output
+interface below was dropped because the first real adopter, gale, failed
+its class list on all six classes. Classification stays in each caller's
+own sieve classify job.
 
 ## v0.1.0 as built: where it departs from the proposal
 
@@ -60,6 +66,7 @@ Inputs: `pool` (default `light`), `fallback` (`ubuntu-24.04`), `sieve-config`
 (`cargo-deny` | `cargo-audit` | `none`), `bazel` (bool), `enforce-skips`
 (bool, default false = shadow mode, every class true).
 
+**Superseded (v0.1.0 has no outputs; see "as built"):**
 Outputs: `run_all`, `reason`, `classes` (JSON), and one fixed output per fleet
 class: `build`, `unit_test`, `integration`, `emulator`, `coverage`,
 `mutation`, `fuzz`, `bench`, `docs`. Proofs, plant controls, guard and audit
@@ -73,7 +80,7 @@ Jobs:
 | supply | for every `git ls-files '*Cargo.lock'` named exactly `Cargo.lock`: `cargo metadata --locked`, then audit each lock; with `bazel`, every invocation and `.bazelrc` carry `--lockfile_mode=error` |
 | pins | every `uses:` is a 40-hex SHA (local `./` excepted); dtolnay `toolchain:` is a version; no `cargo +nightly` without a date; no `pip install` without hashes |
 | controls | `plant --only <controls-only>`, same-repo runners only |
-| classify | refuse a `sieve.toml` whose globs or paths match nothing at HEAD (extend `sieve check-graph`), then `sieve classify --format github-output`. Shadow mode, a refused config or any failure means every class is true |
+| classify (superseded: lives in the caller) | refuse a `sieve.toml` whose globs or paths match nothing at HEAD (extend `sieve check-graph`), then `sieve classify --format github-output`. Shadow mode, a refused config or any failure means every class is true |
 
 ### `required.yml` (workflow_call)
 
@@ -93,6 +100,10 @@ Callers use `needs: [baseline, …every job…]` with `if: always()`, never
 `success()`. One required context per repo replaces lists of up to 22.
 
 ### Class declaration
+
+**As built:** a job's `if:` reads `needs.<classifier>.outputs.<class>` from
+the caller's own classify job, so the `uses:` recognition below is not
+needed. Proposal text:
 
 A job's `if:` reads `needs.baseline.outputs.<class>` in sieve's exact form,
 plus sieve's `[workflows.job_outputs]` map; `sieve check-workflows` verifies
@@ -136,8 +147,9 @@ under `ci-controls/`) and an optional `timeout`.
 - `on: pull_request` (never a paths filter) plus `merge_group`;
   `permissions: contents: read`; `concurrency` cancels in progress only on
   `pull_request`.
-- Gated jobs: `needs: baseline`, `if: !cancelled() && (needs.baseline.result
-  != 'success' || needs.baseline.outputs.<class> != 'false')`, runs-on in the
+- Gated jobs (as built): `needs: classify`, `if: !cancelled() &&
+  (needs.classify.result != 'success' || needs.classify.outputs.<class> !=
+  'false')`, runs-on in the
   fail-closed fork-guard form.
 - Cheap jobs (clippy, rivet) are never gated.
 - `required`: needs all jobs, `if: always()`.
