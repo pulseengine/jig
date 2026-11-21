@@ -182,7 +182,8 @@ artifacts:
       decision: >
         baseline.yml declares the fleet vocabulary as outputs and forwards
         sieve's values for those names; adopters name their sieve classes from
-        it. A class outside it refuses.
+        it. An undefined name stays empty (so the job runs); a class outside
+        the vocabulary is refused at adoption, and at run time fails open.
       rationale: >
         A reusable workflow's outputs are declared statically, while sieve
         writes only the adopter's own class names (sieve-d1, 2026-11-21). A
