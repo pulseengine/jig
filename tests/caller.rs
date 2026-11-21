@@ -371,3 +371,40 @@ fn json_output_and_docs_topic() {
     assert_eq!(code(&o), 0);
     assert!(stdout(&o).starts_with("jig caller:"));
 }
+
+// rivet: verifies REQ-017
+#[test]
+fn local_calls_pass_only_with_allow_local_and_never_mixed() {
+    let lb = "./.github/workflows/baseline.yml";
+    let lr = "./.github/workflows/required.yml";
+    let needs = "[baseline, build, lint]";
+    let d = dir("local-calls");
+    // Without the flag a local call is red.
+    let w = wf(good_on(), "always()", needs, lb, lr);
+    assert_eq!(code(&caller(&d, &w, &[])), 1);
+    // With it, both local is green.
+    let o = caller(&d, &w, &["--allow-local"]);
+    assert_eq!(code(&o), 0, "{}", stdout(&o));
+    // One local and one pinned remote is red: two jig versions in one verdict.
+    let mixed = wf(good_on(), "always()", needs, lb, &req_uses());
+    let o = caller(&d, &mixed, &["--allow-local"]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("different SHAs"), "{}", stdout(&o));
+    // A local path with a ref, or another local file, stays red.
+    let refd = wf(
+        good_on(),
+        "always()",
+        needs,
+        "./.github/workflows/baseline.yml@main",
+        lr,
+    );
+    assert_eq!(code(&caller(&d, &refd, &["--allow-local"])), 1);
+    let other = wf(
+        good_on(),
+        "always()",
+        needs,
+        "./.github/workflows/other.yml",
+        lr,
+    );
+    assert_eq!(code(&caller(&d, &other, &["--allow-local"])), 1);
+}

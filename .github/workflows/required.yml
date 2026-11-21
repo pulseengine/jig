@@ -99,8 +99,17 @@ jobs:
           esac
           test -f "$path"
           echo "CALLER_WORKFLOW=$path" >> "$GITHUB_ENV"
+      # Local ./ calls are accepted only for jig calling itself from source.
       - name: caller workflow shape
-        run: jig caller --workflow "$CALLER_WORKFLOW"
+        env:
+          FROM_SOURCE: ${{ inputs.jig-from-source }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$FROM_SOURCE" = true ] && [ "$REPO" = pulseengine/jig ]; then
+            jig caller --workflow "$CALLER_WORKFLOW" --allow-local
+          else
+            jig caller --workflow "$CALLER_WORKFLOW"
+          fi
       - name: verdict
         env:
           NEEDS_JSON: ${{ inputs.needs-json }}

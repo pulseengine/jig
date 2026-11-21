@@ -1,8 +1,7 @@
 # jig's own CI: rivet validate, actionlint, and the Rust gates with jig's
 # planted controls and stand-ins, on light runners behind the fork guard.
-# Phase 0 (jig calling its own baseline.yml and required.yml) waits for a
-# plant release with plant#33; plant v0.3.0 refuses workflow_call
-# workflows (docs/design.md).
+# Phase 0: the baseline and required jobs call jig's own reusable workflows
+# (baseline.yml's guard builds plant at PLANT_REV, which carries plant#33).
 name: CI
 
 on:
@@ -149,3 +148,21 @@ jobs:
           open=$(grep -c '"reason": "FAIL-OPEN' "$RUNNER_TEMP/stand-in.json" || true)
           echo "plant exit $rc; $open of $want stand-in controls FAIL-OPEN"
           [ "$rc" -eq 1 ] && [ "$want" -gt 0 ] && [ "$open" -eq "$want" ]
+
+  # Phase 0: jig calls its own baseline and required workflows, from this
+  # commit, building jig from source. "required / verdict" becomes the one
+  # required context once this has run green on main.
+  baseline:
+    uses: ./.github/workflows/baseline.yml
+    with:
+      audit: cargo-audit
+      jig-from-source: true
+
+  required:
+    needs: [baseline, rivet, lint, test]
+    if: always()
+    uses: ./.github/workflows/required.yml
+    with:
+      needs-json: ${{ toJSON(needs) }}
+      never-skip: "rivet lint test"
+      jig-from-source: true

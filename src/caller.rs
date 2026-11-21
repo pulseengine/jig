@@ -18,6 +18,10 @@ const TRIGGERS: [&str; 2] = ["pull_request", "merge_group"];
 pub struct Opts {
     pub required_job: String,
     pub baseline_job: String,
+    /// Accept `./.github/workflows/<file>` (no ref) for baseline and required.
+    /// Only pulseengine/jig calling its own workflows may set this: GitHub runs
+    /// a local call from the caller's own commit.
+    pub allow_local: bool,
 }
 
 impl Default for Opts {
@@ -25,6 +29,7 @@ impl Default for Opts {
         Opts {
             required_job: "required".into(),
             baseline_job: "baseline".into(),
+            allow_local: false,
         }
     }
 }
@@ -69,8 +74,12 @@ fn is_sha(s: &str) -> bool {
     s.len() == 40 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// `Some(sha)` when `uses` is `<path>/.github/workflows/<file>@<40 hex>`.
-fn pinned_sha<'a>(uses: &'a str, file: &str) -> Option<&'a str> {
+/// `Some(sha)` when `uses` is `<path>/.github/workflows/<file>@<40 hex>`, or
+/// `Some("local")` for `./.github/workflows/<file>` when local calls are allowed.
+fn pinned_sha<'a>(uses: &'a str, file: &str, allow_local: bool) -> Option<&'a str> {
+    if allow_local && uses == format!("./.github/workflows/{file}") {
+        return Some("local");
+    }
     let (path, sha) = uses.rsplit_once('@')?;
     let want = format!("/.github/workflows/{file}");
     // The part before the workflow path must name a repository (`owner/repo`),
@@ -164,7 +173,7 @@ pub fn check(text: &str, o: &Opts) -> Result<Vec<String>, String> {
                 }
             }
             match e.value.get("uses").and_then(Node::as_str) {
-                Some(u) => match pinned_sha(u, "required.yml") {
+                Some(u) => match pinned_sha(u, "required.yml", o.allow_local) {
                     Some(sha) => shas.push((req, sha)),
                     None => r.push(format!(
                         "required job '{req}' uses '{u}', not .../.github/workflows/required.yml@<40 hex>"
@@ -178,7 +187,7 @@ pub fn check(text: &str, o: &Opts) -> Result<Vec<String>, String> {
     match jobs.iter().find(|e| e.key == *base) {
         None => r.push(format!("baseline job '{base}' is missing")),
         Some(e) => match e.value.get("uses").and_then(Node::as_str) {
-            Some(u) => match pinned_sha(u, "baseline.yml") {
+            Some(u) => match pinned_sha(u, "baseline.yml", o.allow_local) {
                 Some(sha) => shas.push((base, sha)),
                 None => r.push(format!(
                     "baseline job '{base}' uses '{u}', not .../.github/workflows/baseline.yml@<40 hex>"

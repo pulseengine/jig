@@ -73,6 +73,9 @@ enum Cmd {
         /// The baseline job's id.
         #[arg(long, default_value = "baseline")]
         baseline_job: String,
+        /// Accept local ./.github/workflows/{baseline,required}.yml calls (pulseengine/jig only).
+        #[arg(long)]
+        allow_local: bool,
     },
     /// List or print the embedded docs.
     Docs {
@@ -124,12 +127,14 @@ fn main() -> ExitCode {
             workflow,
             required_job,
             baseline_job,
+            allow_local,
         } => run_caller(
             cli.format,
             &workflow,
             &caller::Opts {
                 required_job,
                 baseline_job,
+                allow_local,
             },
         ),
         Cmd::Docs { topic } => run_docs(topic.as_deref()),
@@ -223,12 +228,17 @@ fn run_verdict(
 }
 
 fn report(f: Format, verdict: &str, reasons: &[String]) {
+    report_as(f, "verdict", verdict, reasons);
+}
+
+/// Text output starts with `<label>: green|red`; JSON keeps the `verdict` key.
+fn report_as(f: Format, label: &str, verdict: &str, reasons: &[String]) {
     if f == Format::Json {
         println!("{}", json!({"verdict": verdict, "reasons": reasons}));
     } else if reasons.is_empty() {
-        println!("verdict: green");
+        println!("{label}: green");
     } else {
-        println!("verdict: red");
+        println!("{label}: red");
         for r in reasons {
             println!("  {r}");
         }
@@ -241,10 +251,10 @@ fn run_caller(f: Format, workflow: &Path, opts: &caller::Opts) -> u8 {
         Err(e) => return could_not_run(f, &e),
     };
     if reasons.is_empty() {
-        report(f, "green", &[]);
+        report_as(f, "caller", "green", &[]);
         PASS
     } else {
-        report(f, "red", &reasons);
+        report_as(f, "caller", "red", &reasons);
         FAIL
     }
 }
