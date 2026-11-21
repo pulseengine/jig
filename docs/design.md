@@ -145,8 +145,8 @@ advisory lists; release, sign and deploy pipelines; nightly schedules.
 Risks: check names become `"<caller job> / <called job>"`; plant guard must
 also check jig's own workflows, and today it rejects every job that calls a
 reusable workflow from another repository (plant `src/guard.rs`), which is
-how every caller uses jig, so plant needs a rule for SHA-pinned jig calls
-before the pilot; reusable-workflow nesting caps (2 levels is
+how every caller uses jig (plant#33; a `trusted_workflows` fix awaits a
+plant release, which the pilot needs); reusable-workflow nesting caps (2 levels is
 fine); self-hosted runners have no `gh`, so use `curl`.
 
 Estimate: if gating removed half of the gated-class minutes in code-only PRs,

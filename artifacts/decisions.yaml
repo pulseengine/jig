@@ -148,8 +148,11 @@ artifacts:
         decision tests plus 13 shapes the line parser missed; a second
         implementation would drift. Open seam: plant guard currently rejects
         any job that calls a reusable workflow from another repository, which
-        every jig caller does, so plant needs a rule for SHA-pinned jig calls
-        before the pilot.
+        every jig caller does (plant#33). A fix exists on a local plant branch,
+        unreleased as of 2026-11-21: callers list jig in plant-guard.toml
+        `trusted_workflows`, and a call passes only when pinned to a 40-hex SHA,
+        without runs-on, under allowlisted triggers. The pilot needs a plant
+        release carrying it.
     links:
       - type: satisfies
         target: REQ-009
