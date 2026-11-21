@@ -477,3 +477,42 @@ fn a_symlinked_local_action_is_red() {
     std::os::unix::fs::symlink(d.0.join("target/real"), d.0.join("tools/link")).unwrap();
     assert_eq!(code(&pins(&d.0, &[])), 1);
 }
+
+// rivet: verifies REQ-008
+#[test]
+fn pip_hash_check_survives_escaped_quotes_and_option_values() {
+    let run = |c: &str| wf(&format!("      - run: |\n          {c}\n"));
+    // `\'` is a literal quote, so the `#` starts a comment.
+    assert_red(
+        &run("echo \\'; pip install requests # --require-hashes"),
+        "--require-hashes",
+    );
+    assert_red(
+        &run("echo \\\"; pip install requests # --require-hashes"),
+        "--require-hashes",
+    );
+    // An unbalanced quote: comment state is unknown, so the # is taken as a comment.
+    assert_red(
+        &run("echo 'x; pip install requests # --require-hashes"),
+        "--require-hashes",
+    );
+    // Option values between pip and install do not hide the install.
+    assert_red(
+        &run("pip --cache-dir /tmp/c install requests"),
+        "--require-hashes",
+    );
+    assert_red(
+        &run("pip3 --log l.txt install requests"),
+        "--require-hashes",
+    );
+    assert_red(
+        &run("python3 -m pip --cache-dir c install requests"),
+        "--require-hashes",
+    );
+    assert_green(&run(
+        "pip --cache-dir /tmp/c install --require-hashes -r r.txt",
+    ));
+    assert_green(&run(
+        "echo 'a # b' && pip install --require-hashes -r r.txt",
+    ));
+}

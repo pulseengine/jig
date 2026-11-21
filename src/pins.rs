@@ -147,16 +147,43 @@ fn undated_nightly(run: &str) -> Vec<usize> {
 }
 
 /// Drop a shell comment: `#` at the start or after whitespace, outside quotes.
+///
+/// A backslash outside single quotes escapes the next character. When the
+/// quote state is unbalanced at the end of the line it cannot be trusted, so
+/// the line is cut at the first `#` after whitespace regardless of quotes:
+/// dropping more text can only hide a `--require-hashes`, never invent one.
 fn strip_comment(line: &str) -> &str {
-    let (mut single, mut double, mut prev_ws) = (false, false, true);
+    let (mut single, mut double, mut prev_ws, mut escaped) = (false, false, true, false);
+    let mut cut = None;
     for (i, c) in line.char_indices() {
+        if escaped {
+            escaped = false;
+            prev_ws = false;
+            continue;
+        }
         match c {
+            '\\' if !single => escaped = true,
             '\'' if !double => single = !single,
             '"' if !single => double = !double,
-            '#' if !single && !double && prev_ws => return &line[..i],
+            '#' if !single && !double && prev_ws => {
+                cut = Some(i);
+                break;
+            }
             _ => {}
         }
         prev_ws = c.is_whitespace();
+    }
+    if let Some(i) = cut {
+        return &line[..i];
+    }
+    if single || double || escaped {
+        let mut prev_ws = true;
+        for (i, c) in line.char_indices() {
+            if c == '#' && prev_ws {
+                return &line[..i];
+            }
+            prev_ws = c.is_whitespace();
+        }
     }
     line
 }
@@ -165,13 +192,6 @@ fn strip_comment(line: &str) -> &str {
 fn is_pip(tok: &str) -> bool {
     let name = tok.rsplit('/').next().unwrap_or(tok);
     name.strip_prefix("pip")
-        .is_some_and(|v| v.chars().all(|c| c.is_ascii_digit() || c == '.'))
-}
-
-/// `python`, `python3`, `python3.12` (any path prefix).
-fn is_python(tok: &str) -> bool {
-    let name = tok.rsplit('/').next().unwrap_or(tok);
-    name.strip_prefix("python")
         .is_some_and(|v| v.chars().all(|c| c.is_ascii_digit() || c == '.'))
 }
 
@@ -208,18 +228,15 @@ fn unhashed_pip(run: &str) -> Vec<usize> {
                 .split_whitespace()
                 .map(|t| t.trim_matches(|c| matches!(c, '"' | '\'')))
                 .collect();
-            // Index of the `install` that belongs to a pip invocation.
-            let install = toks.iter().enumerate().position(|(i, t)| {
-                *t == "install"
-                    && toks[..i].iter().enumerate().any(|(j, p)| {
-                        is_pip(p) && toks[j + 1..i].iter().all(|o| o.starts_with('-'))
-                            || (*p == "-m"
-                                && j > 0
-                                && is_python(toks[j - 1])
-                                && toks.get(j + 1).is_some_and(|n| *n == "pip")
-                                && j + 2 == i)
-                    })
-            });
+            // The first `install` anywhere after a pip invocation. Tokens in
+            // between may be options or their values, so none of them can
+            // hide it (fail closed).
+            // A bare `pip` token also covers `python -m pip`.
+            let invoked = |j: usize| is_pip(toks[j]);
+            let install = toks
+                .iter()
+                .enumerate()
+                .position(|(i, t)| *t == "install" && (0..i).any(invoked));
             if let Some(i) = install
                 && !toks[i + 1..].contains(&"--require-hashes")
             {
