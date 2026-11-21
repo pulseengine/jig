@@ -1,0 +1,13 @@
+# jig pins the tools its own development loop uses (rivet), the way the
+# fleet's realm-pin PRs do. Realm covalent composes pulseengine and
+# pulseengine-wasm; the layer is pinned by name and digest.
+#
+# 2026.11.19 is the newest layer `varve outdated` listed for line 2026.11
+# (covalent signed index #20) on 2026-11-21.
+manifest-version = 1
+
+[toolchain]
+realm   = "covalent"
+channel = "rolling"
+layer   = "2026.11.19"
+digest  = "sha256:9cf3a210caa13037610fc0c9514bd91b56ac7c55b1e27173f02f2df2eb935f29"

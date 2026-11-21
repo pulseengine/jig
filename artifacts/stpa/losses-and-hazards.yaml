@@ -1,0 +1,213 @@
+# STPA seed for jig (draft, 2026-11-21). Placeholders the real analysis
+# (control structure, UCAs, loss scenarios) will refine. Source:
+# docs/design.md, distilled from the proposal "Fleet CI unification".
+artifacts:
+  - id: L-1
+    type: loss
+    title: Defective change reaches main or a release while CI reports green
+    status: draft
+    description: >
+      A change that a check was meant to stop (a failing build, test, proof,
+      audit or lint) merges or ships because the baseline reported the
+      required context green. Every caller repo is exposed at once.
+    fields:
+      stakeholders: [maintainers, release-consumers, auditors]
+
+  - id: L-2
+    type: loss
+    title: Fleet-wide CI outage or blocked delivery
+    status: draft
+    description: >
+      A defect in jig turns every caller's required context red or hangs it,
+      so correct changes cannot merge in any repo that pins the defective SHA.
+    fields:
+      stakeholders: [maintainers]
+
+  - id: L-3
+    type: loss
+    title: Lost trust in the baseline's verdicts
+    status: draft
+    description: >
+      False reds, flaky checks or unexplained skips lead teams to bypass or
+      unpin the baseline, and the fleet falls back to divergent per-repo CI.
+    fields:
+      stakeholders: [maintainers]
+
+  - id: H-1
+    type: hazard
+    title: Fail-open aggregator reported green
+    status: draft
+    description: >
+      required / verdict reports success although needs is empty, a needed
+      job failed or was cancelled, baseline did not succeed, or a job was
+      skipped whose class sieve selected or which is never-skip.
+    fields:
+      severity: critical
+    links:
+      - type: leads-to-loss
+        target: L-1
+
+  - id: H-2
+    type: hazard
+    title: Caller job missing from the aggregator's needs
+    status: draft
+    description: >
+      A caller job is not listed in required's needs (and is not declared
+      advisory), so its failure never reaches the verdict.
+    fields:
+      severity: critical
+    links:
+      - type: leads-to-loss
+        target: L-1
+
+  - id: H-3
+    type: hazard
+    title: sieve classify skips a class the change needs
+    status: draft
+    description: >
+      classify outputs false for a class whose files the change touches (dead
+      globs, a sieve.toml matching nothing at HEAD, a classifier error read as
+      "skip"), and the gated job does not run.
+    fields:
+      severity: critical
+    links:
+      - type: leads-to-loss
+        target: L-1
+
+  - id: H-4
+    type: hazard
+    title: A baseline check cannot go red
+    status: draft
+    description: >
+      guard, supply, pins, controls or verdict passes on the bad input it
+      exists to reject (a vacuous check), so its green is not evidence.
+    fields:
+      severity: critical
+    links:
+      - type: leads-to-loss
+        target: L-1
+      - type: leads-to-loss
+        target: L-3
+
+  - id: H-5
+    type: hazard
+    title: Stale lockfile passes the supply check
+    status: draft
+    description: >
+      A Cargo.lock out of date with its manifest, a nested lock the check did
+      not find, or a Bazel build without lockfile_mode=error passes supply.
+    fields:
+      severity: marginal
+    links:
+      - type: leads-to-loss
+        target: L-1
+
+  - id: H-6
+    type: hazard
+    title: A jig change reaches callers without their own review
+    status: draft
+    description: >
+      A caller references jig by tag or branch, or many callers bump at once,
+      so an untested jig commit runs in every repo before any pilot soaked it.
+    fields:
+      severity: critical
+    links:
+      - type: leads-to-loss
+        target: L-1
+      - type: leads-to-loss
+        target: L-2
+
+  - id: H-7
+    type: hazard
+    title: Baseline fails for correct changes
+    status: draft
+    description: >
+      A jig defect, an unavailable tool download or a broken self-test makes
+      the verdict red for a correct change, and there is no rollback that
+      restores the previous behaviour quickly.
+    fields:
+      severity: marginal
+    links:
+      - type: leads-to-loss
+        target: L-2
+      - type: leads-to-loss
+        target: L-3
+
+  - id: SC-1
+    type: system-constraint
+    title: The verdict fails closed
+    status: draft
+    description: >
+      required / verdict must be red unless needs is non-empty, every needed
+      job succeeded or was legitimately skipped (class not selected and not
+      never-skip), and baseline succeeded.
+    links:
+      - type: prevents
+        target: H-1
+
+  - id: SC-2
+    type: system-constraint
+    title: Every non-advisory caller job feeds the verdict
+    status: draft
+    description: >
+      The verdict must fail when a caller job other than required and the
+      declared advisory jobs is absent from needs.
+    links:
+      - type: prevents
+        target: H-2
+
+  - id: SC-3
+    type: system-constraint
+    title: Classification fails closed
+    status: draft
+    description: >
+      Any classifier failure, a refused sieve.toml, shadow mode or a non-PR
+      event must select every class; skips are enforced only where a merge
+      queue reruns everything.
+    links:
+      - type: prevents
+        target: H-3
+
+  - id: SC-4
+    type: system-constraint
+    title: Every check is shown able to go red
+    status: draft
+    description: >
+      Each baseline check must have a planted control that turns it red, run
+      on the cadence of its class, before its green counts as evidence.
+    links:
+      - type: prevents
+        target: H-4
+
+  - id: SC-5
+    type: system-constraint
+    title: Every lockfile is enforced
+    status: draft
+    description: >
+      Every tracked Cargo.lock must resolve with --locked and every Bazel
+      invocation must run with lockfile_mode=error.
+    links:
+      - type: prevents
+        target: H-5
+
+  - id: SC-6
+    type: system-constraint
+    title: jig reaches a caller only through that caller's pin bump
+    status: draft
+    description: >
+      Callers must pin jig by 40-hex SHA, and a new jig commit must pass jig's
+      own CI and a pilot soak before other repos bump to it.
+    links:
+      - type: prevents
+        target: H-6
+
+  - id: SC-7
+    type: system-constraint
+    title: The baseline can be rolled back per repo and fleet-wide
+    status: draft
+    description: >
+      Reverting a caller's pin must restore its previous CI, and a fleet-wide
+      switch must fall back to running every job.
+    links:
+      - type: prevents
+        target: H-7

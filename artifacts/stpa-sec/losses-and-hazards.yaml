@@ -1,0 +1,169 @@
+# STPA-Sec seed for jig (draft, 2026-11-21). Shares the control structure
+# with artifacts/stpa once that is drawn.
+artifacts:
+  - id: SL-1
+    type: sec-loss
+    title: Compromise of a self-hosted runner host
+    status: draft
+    description: >
+      Untrusted code executes on a self-hosted runner and gains persistence,
+      network position or access to other repositories' workspaces.
+    fields:
+      cia-impact: [integrity, confidentiality, availability]
+      stakeholders: [org-infrastructure]
+
+  - id: SL-2
+    type: sec-loss
+    title: Malicious code injected into fleet repositories or releases
+    status: draft
+    description: >
+      Code an attacker controls (a moved action tag, a swapped tool binary, a
+      dependency with a known advisory) runs in CI of every caller and can
+      alter what is merged, built or released.
+    fields:
+      cia-impact: [integrity]
+      stakeholders: [maintainers, release-consumers]
+
+  - id: SL-3
+    type: sec-loss
+    title: Disclosure of repository tokens or secrets
+    status: draft
+    fields:
+      cia-impact: [confidentiality]
+      stakeholders: [maintainers, org-infrastructure]
+
+  - id: SH-1
+    type: sec-hazard
+    title: Fork code reaches a self-hosted runner
+    status: draft
+    description: >
+      A pull request from a fork runs on a self-hosted runner because a job's
+      runs-on is not in the fail-closed form, a label is misspelled so the
+      fallback never applies, or a self-hosted job sits in a
+      pull_request_target workflow.
+    fields:
+      cia-impact: [integrity, confidentiality]
+      severity: critical
+    links:
+      - type: leads-to-sec-loss
+        target: SL-1
+      - type: leads-to-sec-loss
+        target: SL-3
+
+  - id: SH-2
+    type: sec-hazard
+    title: Unpinned action in the baseline itself
+    status: draft
+    description: >
+      A uses: in jig's own workflows references a tag or branch, so whoever
+      can move that ref runs code in every caller's CI.
+    fields:
+      cia-impact: [integrity, confidentiality]
+      severity: critical
+    links:
+      - type: leads-to-sec-loss
+        target: SL-2
+      - type: leads-to-sec-loss
+        target: SL-3
+
+  - id: SH-3
+    type: sec-hazard
+    title: Unverified tool binary executed by the baseline
+    status: draft
+    description: >
+      plant, sieve or another tool is downloaded by name or "latest" without
+      a version and sha256 or a verified varve layer, and a swapped binary
+      runs in every caller.
+    fields:
+      cia-impact: [integrity]
+      severity: critical
+    links:
+      - type: leads-to-sec-loss
+        target: SL-2
+
+  - id: SH-4
+    type: sec-hazard
+    title: Baseline holds secrets or broad token permissions
+    status: draft
+    description: >
+      jig asks callers for secrets, inherits them, or runs with a token wider
+      than contents: read (and actions: read for completeness).
+    fields:
+      cia-impact: [confidentiality, integrity]
+      severity: high
+    links:
+      - type: leads-to-sec-loss
+        target: SL-3
+      - type: leads-to-sec-loss
+        target: SL-2
+
+  - id: SH-5
+    type: sec-hazard
+    title: Dependency with a known advisory merges unaudited
+    status: draft
+    description: >
+      A Cargo.lock the audit did not visit, or an audit step that fails open,
+      lets a dependency with a published advisory into a caller.
+    fields:
+      cia-impact: [integrity]
+      severity: high
+    links:
+      - type: leads-to-sec-loss
+        target: SL-2
+
+  - id: SSC-1
+    type: sec-constraint
+    title: Fork pull requests never reach self-hosted runners
+    status: draft
+    description: >
+      Every self-hosted job uses the fail-closed runs-on expression; no
+      self-hosted job runs in a pull_request_target workflow; plant guard
+      checks the caller's and jig's own workflows.
+    links:
+      - type: prevents-sec-hazard
+        target: SH-1
+
+  - id: SSC-2
+    type: sec-constraint
+    title: Every action reference in jig is a commit SHA
+    status: draft
+    description: >
+      Every uses: in jig (local ./ excepted) is a 40-hex SHA, and jig passes
+      its own pin check.
+    links:
+      - type: prevents-sec-hazard
+        target: SH-2
+
+  - id: SSC-3
+    type: sec-constraint
+    title: Tool binaries are pinned by version and digest
+    status: draft
+    description: >
+      Every binary the baseline runs is fetched by exact version and verified
+      against a sha256 or a signed varve layer before it executes.
+    links:
+      - type: prevents-sec-hazard
+        target: SH-3
+
+  - id: SSC-4
+    type: sec-constraint
+    title: The baseline runs without secrets and with least privilege
+    status: draft
+    description: >
+      jig declares no secrets input, uses no org secrets, and its jobs run with
+      contents: read, plus actions: read only where the completeness step
+      needs it.
+    links:
+      - type: prevents-sec-hazard
+        target: SH-4
+
+  - id: SSC-5
+    type: sec-constraint
+    title: Every lockfile is audited and the audit fails closed
+    status: draft
+    description: >
+      Every tracked Cargo.lock is audited; an audit that cannot run counts as
+      a failure.
+    links:
+      - type: prevents-sec-hazard
+        target: SH-5

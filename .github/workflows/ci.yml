@@ -1,0 +1,79 @@
+# jig's only workflow during the bootstrap and the fleet CI hold: rivet
+# validate and actionlint, on light runners behind the fork guard. The
+# reusable baseline workflows come later (docs/design.md, phase 0).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# `shell: bash` runs with -eo pipefail, so a piped step reports its own exit.
+defaults:
+  run:
+    shell: bash
+
+env:
+  # The rivet in the varve.toml layer (covalent 2026.11.19 composes rivet
+  # 0.43.0). sha256 of rivet-v0.43.0-x86_64-unknown-linux-gnu.tar.gz from the
+  # release's SHA256SUMS.txt, recorded 2026-11-21; the extracted binary
+  # (a8c3dec7…f770) matches the digest in the signed layer.
+  RIVET_VERSION: v0.43.0
+  RIVET_SHA256: b3681544f1a49d9ec71ba271daa8de1f45e50a8a1362370ca068603b8a94f22c
+  # sha256 of actionlint_1.7.12_linux_amd64.tar.gz from the release's
+  # checksums.txt, recorded 2026-11-21.
+  ACTIONLINT_VERSION: 1.7.12
+  ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+
+jobs:
+  rivet:
+    name: rivet validate
+    # Fork PRs never reach self-hosted runners (fail-closed same-repo guard).
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: fetch pinned rivet release
+        run: |
+          d="$RUNNER_TEMP/rivet"; mkdir -p "$d"; cd "$d"
+          asset="rivet-$RIVET_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o "$asset" "https://github.com/pulseengine/rivet/releases/download/$RIVET_VERSION/$asset"
+          echo "$RIVET_SHA256  $asset" | sha256sum -c -
+          tar xzf "$asset"
+          echo "$d/$(dirname "$(find . -name rivet -type f | head -1)")" >> "$GITHUB_PATH"
+      - name: rivet validate
+        run: |
+          rivet --version
+          rivet validate
+
+  lint:
+    name: actionlint
+    # Fork PRs never reach self-hosted runners (fail-closed same-repo guard).
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: fetch pinned actionlint release
+        run: |
+          d="$RUNNER_TEMP/actionlint"; mkdir -p "$d"; cd "$d"
+          asset="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "$asset" "https://github.com/rhysd/actionlint/releases/download/v$ACTIONLINT_VERSION/$asset"
+          echo "$ACTIONLINT_SHA256  $asset" | sha256sum -c -
+          tar xzf "$asset" actionlint
+          echo "$d" >> "$GITHUB_PATH"
+      - name: actionlint
+        run: |
+          actionlint -version
+          actionlint -no-color
