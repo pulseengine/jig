@@ -40,6 +40,8 @@ pub struct Report {
     /// `uses:` values examined.
     pub uses: usize,
     pub violations: Vec<Violation>,
+    /// Local `uses: ./path` references: (line, document path, value).
+    pub local: Vec<(usize, String, String)>,
 }
 
 fn hex_lower(s: &str, n: usize) -> bool {
@@ -144,12 +146,47 @@ fn undated_nightly(run: &str) -> Vec<usize> {
     out
 }
 
+/// Drop a shell comment: `#` at the start or after whitespace, outside quotes.
+fn strip_comment(line: &str) -> &str {
+    let (mut single, mut double, mut prev_ws) = (false, false, true);
+    for (i, c) in line.char_indices() {
+        match c {
+            '\'' if !double => single = !single,
+            '"' if !single => double = !double,
+            '#' if !single && !double && prev_ws => return &line[..i],
+            _ => {}
+        }
+        prev_ws = c.is_whitespace();
+    }
+    line
+}
+
+/// `pip`, `pip3`, `pip3.12` (any path prefix).
+fn is_pip(tok: &str) -> bool {
+    let name = tok.rsplit('/').next().unwrap_or(tok);
+    name.strip_prefix("pip")
+        .is_some_and(|v| v.chars().all(|c| c.is_ascii_digit() || c == '.'))
+}
+
+/// `python`, `python3`, `python3.12` (any path prefix).
+fn is_python(tok: &str) -> bool {
+    let name = tok.rsplit('/').next().unwrap_or(tok);
+    name.strip_prefix("python")
+        .is_some_and(|v| v.chars().all(|c| c.is_ascii_digit() || c == '.'))
+}
+
 /// 0-based line numbers of `pip install` commands without `--require-hashes`.
+///
+/// Comments are dropped first, and a command is split at every shell
+/// separator (`;`, `&`, `|`, newlines) and at `$(`, backticks and parentheses,
+/// so `--require-hashes` counts only as an argument after `install` in the
+/// same pip command.
 fn unhashed_pip(run: &str) -> Vec<usize> {
     // Join backslash continuations, remembering the line each logical line began on.
     let mut logical: Vec<(usize, String)> = Vec::new();
     let mut cont = false;
     for (ln, line) in run.lines().enumerate() {
+        let line = strip_comment(line);
         let (body, next_cont) = match line.trim_end().strip_suffix('\\') {
             Some(b) => (b, true),
             None => (line, false),
@@ -165,17 +202,27 @@ fn unhashed_pip(run: &str) -> Vec<usize> {
     }
     let mut out = Vec::new();
     for (ln, text) in logical {
-        let text = text.replace("&&", ";").replace("||", ";").replace('|', ";");
-        for seg in text.split(';') {
+        let seps = |c: char| matches!(c, ';' | '&' | '|' | '`' | '(' | ')' | '$' | '\n');
+        for seg in text.split(seps) {
             let toks: Vec<&str> = seg
                 .split_whitespace()
-                .map(|t| t.trim_matches(|c| matches!(c, '"' | '\'' | '(' | ')' | '`')))
+                .map(|t| t.trim_matches(|c| matches!(c, '"' | '\'')))
                 .collect();
-            let installs = toks.windows(2).any(|w| {
-                let cmd = w[0].rsplit('/').next().unwrap_or(w[0]);
-                matches!(cmd, "pip" | "pip3") && w[1] == "install"
+            // Index of the `install` that belongs to a pip invocation.
+            let install = toks.iter().enumerate().position(|(i, t)| {
+                *t == "install"
+                    && toks[..i].iter().enumerate().any(|(j, p)| {
+                        is_pip(p) && toks[j + 1..i].iter().all(|o| o.starts_with('-'))
+                            || (*p == "-m"
+                                && j > 0
+                                && is_python(toks[j - 1])
+                                && toks.get(j + 1).is_some_and(|n| *n == "pip")
+                                && j + 2 == i)
+                    })
             });
-            if installs && !toks.contains(&"--require-hashes") {
+            if let Some(i) = install
+                && !toks[i + 1..].contains(&"--require-hashes")
+            {
                 out.push(ln);
             }
         }
@@ -241,6 +288,11 @@ impl Walker<'_> {
                             if let Some(why) = uses_problem(value) {
                                 self.add(*line, path, format!("uses: {why}"));
                             }
+                            if value.starts_with("./") {
+                                self.report
+                                    .local
+                                    .push((*line, path.to_string(), value.clone()));
+                            }
                             let lower = value.to_ascii_lowercase();
                             if lower == "dtolnay/rust-toolchain"
                                 || lower.starts_with("dtolnay/rust-toolchain@")
@@ -288,6 +340,7 @@ pub fn check_text(file: &str, text: &str) -> Report {
     match yaml::parse(text) {
         Err(e) => Report {
             uses: 0,
+            local: Vec::new(),
             violations: vec![Violation {
                 file: file.to_string(),
                 line: None,
@@ -312,7 +365,7 @@ fn is_yaml(name: &str, stems: &[&str]) -> bool {
         .any(|s| name == format!("{s}.yml") || name == format!("{s}.yaml"))
 }
 
-fn collect(dir: &Path, out: &mut BTreeSet<PathBuf>) -> Result<(), String> {
+fn collect(dir: &Path, root: bool, out: &mut BTreeSet<PathBuf>) -> Result<(), String> {
     let rd = fs::read_dir(dir).map_err(|e| format!("cannot read {}: {e}", dir.display()))?;
     for ent in rd {
         let ent = ent.map_err(|e| format!("cannot read {}: {e}", dir.display()))?;
@@ -321,8 +374,10 @@ fn collect(dir: &Path, out: &mut BTreeSet<PathBuf>) -> Result<(), String> {
             .file_type()
             .map_err(|e| format!("cannot stat {}: {e}", ent.path().display()))?;
         if ty.is_dir() {
-            if name != "target" && name != ".git" {
-                collect(&ent.path(), out)?;
+            // Only the root target/ is skipped; anything a workflow uses from a
+            // skipped place is caught by the local-use check in check_dir.
+            if name != ".git" && !(root && name == "target") {
+                collect(&ent.path(), false, out)?;
             }
         } else if ty.is_file() && is_yaml(&name, &["action"]) {
             out.insert(ent.path());
@@ -349,7 +404,7 @@ pub fn scan_files(root: &Path) -> Result<Vec<PathBuf>, String> {
             }
         }
     }
-    collect(root, &mut set)?;
+    collect(root, true, &mut set)?;
     Ok(set.into_iter().collect())
 }
 
@@ -363,21 +418,66 @@ pub struct DirReport {
 /// Scan a directory. `Err` means the scan could not run (exit 2).
 pub fn check_dir(root: &Path) -> Result<DirReport, String> {
     let files = scan_files(root)?;
+    let scanned: BTreeSet<String> = files.iter().map(|f| shown(root, f)).collect();
     let mut rep = DirReport {
         files: files.len(),
         uses: 0,
         violations: Vec::new(),
     };
     for f in files {
-        let shown = f
-            .strip_prefix(root)
-            .unwrap_or(&f)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let text = fs::read_to_string(&f).map_err(|e| format!("cannot read {shown}: {e}"))?;
-        let r = check_text(&shown, &text);
+        let name = shown(root, &f);
+        let text = fs::read_to_string(&f).map_err(|e| format!("cannot read {name}: {e}"))?;
+        let r = check_text(&name, &text);
         rep.uses += r.uses;
         rep.violations.extend(r.violations);
+        for (line, path, value) in r.local {
+            if let Some(why) = unscanned_local(&value, &scanned) {
+                rep.violations.push(Violation {
+                    file: shown(root, &f),
+                    line: Some(line),
+                    path,
+                    reason: format!("uses: {why}"),
+                });
+            }
+        }
     }
     Ok(rep)
+}
+
+/// A scanned file's path relative to the scan root, with `/` separators.
+fn shown(root: &Path, f: &Path) -> String {
+    f.strip_prefix(root)
+        .unwrap_or(f)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+/// Why a local `uses: ./path` was not checked, if it was not: the action
+/// (`path/action.yml|yaml`) or reusable workflow (`path.yml|yaml`) it names
+/// must be one of the files this scan read. A missing, symlinked or skipped
+/// target is red, never passed unseen.
+fn unscanned_local(value: &str, scanned: &BTreeSet<String>) -> Option<String> {
+    let rel = value.trim_start_matches("./").trim_end_matches('/');
+    let parts: Vec<&str> = rel.split('/').collect();
+    if rel.is_empty()
+        || parts
+            .iter()
+            .any(|p| p.is_empty() || *p == "." || *p == "..")
+    {
+        return Some(format!(
+            "local path '{value}' is empty or leaves the repository"
+        ));
+    }
+    let candidates = if rel.ends_with(".yml") || rel.ends_with(".yaml") {
+        vec![rel.to_string()]
+    } else {
+        vec![format!("{rel}/action.yml"), format!("{rel}/action.yaml")]
+    };
+    if candidates.iter().any(|c| scanned.contains(c)) {
+        None
+    } else {
+        Some(format!(
+            "local '{value}' names no file this scan read (missing, symlinked, or in a skipped directory), so it was not checked"
+        ))
+    }
 }

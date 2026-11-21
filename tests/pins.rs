@@ -362,3 +362,118 @@ fn docs_lists_and_prints_topics() {
         2
     );
 }
+
+// rivet: verifies REQ-008
+#[test]
+fn pip_hash_check_is_not_fooled_by_comments_or_other_commands() {
+    let run = |c: &str| wf(&format!("      - run: |\n          {c}\n"));
+    assert_red(
+        &run("pip install requests # --require-hashes"),
+        "--require-hashes",
+    );
+    assert_red(
+        &run("pip install requests & echo --require-hashes"),
+        "--require-hashes",
+    );
+    assert_red(
+        &run("echo $(pip install requests) --require-hashes"),
+        "--require-hashes",
+    );
+    assert_red(
+        &run("echo `pip install requests` --require-hashes"),
+        "--require-hashes",
+    );
+    assert_red(&run("pip3.12 install requests"), "--require-hashes");
+    assert_red(
+        &run("python3.12 -m pip install requests"),
+        "--require-hashes",
+    );
+    assert_red(
+        &run("pip install requests --require-hashes-x"),
+        "--require-hashes",
+    );
+    assert_red(
+        &run("pip --require-hashes freeze; pip install requests"),
+        "--require-hashes",
+    );
+    assert_green(&run("pip install --require-hashes -r r.txt # pinned"));
+    assert_green(&run(
+        "echo '# not a comment' && pip install --require-hashes -r r.txt",
+    ));
+}
+
+// rivet: verifies REQ-008
+#[test]
+fn every_local_action_a_workflow_uses_must_have_been_scanned() {
+    let call =
+        |p: &str| format!("on: push\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: {p}\n");
+    let bad_action = "runs:\n  using: composite\n  steps:\n    - uses: actions/checkout@v4\n";
+    let good_action =
+        "runs:\n  using: composite\n  steps:\n    - run: echo hi\n      shell: bash\n";
+
+    // A nested directory named target is scanned, so its bad action is found.
+    let d = dir("local-nested-target");
+    put(&d, ".github/workflows/ci.yml", &call("./tools/target"));
+    put(&d, "tools/target/action.yml", bad_action);
+    let o = pins(&d.0, &[]);
+    assert_eq!(code(&o), 1);
+    assert!(String::from_utf8_lossy(&o.stdout).contains("tools/target/action.yml"));
+
+    // A used action that is missing (or was skipped) is red, not silently passed.
+    let d = dir("local-missing");
+    put(&d, ".github/workflows/ci.yml", &call("./tools/gone"));
+    let o = pins(&d.0, &[]);
+    assert_eq!(code(&o), 1);
+    assert!(String::from_utf8_lossy(&o.stdout).contains("./tools/gone"));
+
+    // An action under the skipped root target/ is red when a workflow uses it.
+    let d = dir("local-root-target");
+    put(&d, ".github/workflows/ci.yml", &call("./target/x"));
+    put(&d, "target/x/action.yml", good_action);
+    assert_eq!(code(&pins(&d.0, &[])), 1);
+
+    // Escaping the repository is red.
+    let d = dir("local-escape");
+    put(&d, ".github/workflows/ci.yml", &call("./../elsewhere"));
+    assert_eq!(code(&pins(&d.0, &[])), 1);
+
+    // A local reusable workflow must be one of the scanned workflow files.
+    let d = dir("local-reusable");
+    put(
+        &d,
+        ".github/workflows/ci.yml",
+        "on: push\njobs:\n  a:\n    uses: ./.github/workflows/called.yml\n",
+    );
+    put(
+        &d,
+        ".github/workflows/called.yml",
+        "on: workflow_call\njobs:\n  b:\n    runs-on: x\n    steps:\n      - run: echo\n",
+    );
+    assert_eq!(code(&pins(&d.0, &[])), 0);
+
+    // The resolved, scanned good action stays green.
+    let d = dir("local-good");
+    put(&d, ".github/workflows/ci.yml", &call("./tools/ok"));
+    put(&d, "tools/ok/action.yaml", good_action);
+    assert_eq!(code(&pins(&d.0, &[])), 0);
+}
+
+// rivet: verifies REQ-008
+#[cfg(unix)]
+#[test]
+fn a_symlinked_local_action_is_red() {
+    let d = dir("local-symlink");
+    put(
+        &d,
+        ".github/workflows/ci.yml",
+        "on: push\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: ./tools/link\n",
+    );
+    put(
+        &d,
+        "target/real/action.yml",
+        "runs:\n  using: composite\n  steps:\n    - uses: actions/checkout@v4\n",
+    );
+    fs::create_dir_all(d.0.join("tools")).unwrap();
+    std::os::unix::fs::symlink(d.0.join("target/real"), d.0.join("tools/link")).unwrap();
+    assert_eq!(code(&pins(&d.0, &[])), 1);
+}
