@@ -1,0 +1,3 @@
+{"baseline": {"result": "success", "outputs": {"run_all": "false", "build": "true"}},
+ "build": {"result": "skipped", "outputs": {}},
+ "clippy": {"result": "success", "outputs": {}}}

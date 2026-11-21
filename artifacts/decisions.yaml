@@ -231,3 +231,24 @@ artifacts:
         target: REQ-010
       - type: satisfies
         target: REQ-019
+
+  - id: DD-014
+    type: design-decision
+    title: The verdict also checks the caller workflow's shape
+    status: draft
+    fields:
+      decision: >
+        required.yml runs `jig caller` on the caller workflow before the
+        verdict: pull_request and merge_group triggers without filters, no
+        pull_request_target, a required job with `if: always()` that needs
+        every other job, and baseline and required pinned to the same SHA.
+      rationale: >
+        A required job outside the merge queue stalls every entry (relay's
+        Verus history), a paths filter skips a required context unseen, and
+        mismatched SHAs mix two jig versions in one verdict. Checking the
+        shape on every run keeps it from drifting after adoption.
+    links:
+      - type: satisfies
+        target: REQ-017
+      - type: satisfies
+        target: REQ-018

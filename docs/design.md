@@ -5,6 +5,38 @@ called ci-baseline. Numbers come from sieve's dry run and a read of every
 repo's workflow files; those marked as estimates are estimates. Everything
 here is planned, not implemented.
 
+## v0.1.0 as built: where it departs from the proposal
+
+Agreed with the neighbouring sessions on 2026-11-21 (sieve, plant, warte,
+relay, temper, varve) and recorded in artifacts/ (REQ-015..020, DD-011..013):
+
+- **No `pool`, `fallback` or `sieve-config` input.** plant guard refuses a
+  runner taken from an input, and baseline's jobs are light work, so every
+  job runs on the light pool behind the fail-closed fork guard. sieve's
+  config is `sieve.toml` at the root, so the classify step keeps the exact
+  form sieve check-workflows recognises (REQ-018).
+- **Outputs are `run_all` plus the fixed class vocabulary**, forwarded from
+  sieve unchanged; no `reason` or `classes` (sieve's github-output has
+  neither). A vocabulary name the adopter does not define stays empty, so
+  its jobs run; `jig classes` refuses a class outside the vocabulary
+  (REQ-016, DD-011).
+- **Config refusal is sieve's own** `check-graph --control graph-inputs`
+  (exit 1 or 3 fails the job); jig adds no pre-check (REQ-003).
+- **`delegated` input**: a job judged by a caller aggregator (relay's Kani and
+  Verus gates keep their reason-gated skips) is not judged by the verdict;
+  the aggregator must be never-skip, succeed and list the job in its needs
+  (REQ-015, DD-012).
+- **Completeness reads the caller workflow from the checkout** (path from
+  `github.workflow_ref`), so no `actions: read` is needed; `jig caller`
+  also checks the triggers, filters and the required job's shape (REQ-017).
+- **supply covers npm**: package-lock.json sync and `npm audit`, no waivers.
+- **jig cuts signed releases** (owner, 2026-11-21) and the workflows fetch
+  its binary by recorded digest (docs/releasing.md); `action.yml` offers
+  single checks as a step. Version 1.0 means fleet-wide use (REQ-020).
+- **Blocker**: plant v0.3.0 rejects workflow_call workflows and calls to
+  another repo's reusable workflow; adoption, and jig calling itself
+  (phase 0), wait for the plant release carrying plant#33.
+
 ## Why a separate repo
 
 plant is the checker: sieve's false-skip controls live in plant so the decider

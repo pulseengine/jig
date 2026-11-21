@@ -1,0 +1,30 @@
+# A caller workflow in the shape jig expects (REQ-017). Planted copies of it
+# and of needs.json turn jig verdict / jig caller red.
+on:
+  pull_request:
+  merge_group:
+permissions:
+  contents: read
+jobs:
+  baseline:
+    uses: pulseengine/jig/.github/workflows/baseline.yml@0123456789abcdef0123456789abcdef01234567
+  build:
+    needs: baseline
+    if: ${{ !cancelled() && (needs.baseline.result != 'success' || needs.baseline.outputs.build != 'false') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo build
+  clippy:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo clippy
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo test
+  required:
+    needs: [baseline, build, clippy]
+    if: always()
+    uses: pulseengine/jig/.github/workflows/required.yml@0123456789abcdef0123456789abcdef01234567
+    with:
+      needs-json: ${{ toJSON(needs) }}

@@ -306,6 +306,10 @@ jobs:
         run: |
           sieve --version
           sieve check-graph --config sieve.toml --control graph-inputs
+      # The config comes from the PR head. A PR that edits sieve.toml (or
+      # anything under .github/) still runs everything: both are on sieve's
+      # built-in run_all list, which an adopter config can extend but never
+      # shrink (sieve src/config.rs, defaults_cannot_be_dropped, since v0.1.0).
       # sieve's own form, so sieve check-workflows can check this callee at
       # the pinned SHA (REQ-018). It writes only the adopter's classes plus
       # run_all; an undefined vocabulary name stays empty and so runs.

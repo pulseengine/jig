@@ -17,15 +17,16 @@ not vendor or build them. Design: `docs/design.md`.
 ## Rules
 
 - Project name is lowercase: jig.
-- Bootstrap phase, CI hold: one light workflow only (rivet validate + lint).
-  No pilot wiring into other repos until the pulseengine.eu session signals
-  that the hold is lifted.
+- Fleet CI hold: no pilot wiring into other repos until the pulseengine.eu
+  session signals that the hold is lifted. jig's own CI stays on the light
+  pool.
 - Every `uses:` in this repo is pinned to a 40-hex SHA; jig must pass its own
   pin check.
 - Self-hosted jobs use the fail-closed fork guard expression; no self-hosted
   job in a `pull_request_target` workflow.
-- jig has no org secrets and publishes nothing. Callers grant `contents: read`
-  (plus `actions: read` for the completeness step) and pass no secrets.
+- jig has no org secrets. It cuts signed releases (docs/releasing.md); the
+  version stays below 1.0 until the whole fleet uses it. Callers grant
+  `contents: read` and pass no secrets.
 - A check counts only once a planted bad input has turned it red (plant).
 - No new Python: checkers are Rust, as WASI components where possible.
 - rivet comes from the varve pin (`varve.toml`, realm covalent); run it as
