@@ -1,13 +1,13 @@
-# jig pins the tools its own development loop uses (rivet), the way the
-# fleet's realm-pin PRs do. Realm covalent composes pulseengine and
-# pulseengine-wasm; the layer is pinned by name and digest.
+# jig pins the tools its own development loop uses (rivet; plant, sieve and
+# jig itself ride in the same layer). Realm pulseengine is the smallest realm
+# that covers them (owner, 2026-11-21); the layer is pinned by name and digest.
 #
-# 2026.11.19 is the newest layer `varve outdated` listed for line 2026.11
-# (covalent signed index #20) on 2026-11-21.
+# 2026.11.32 is the first pulseengine layer with jig v0.1.0 and plant v0.4.0,
+# listed newest in the line 2026.11 index (pulseengine-layers#79) on 2026-11-21.
 manifest-version = 1
 
 [toolchain]
-realm   = "covalent"
+realm   = "pulseengine"
 channel = "rolling"
-layer   = "2026.11.19"
-digest  = "sha256:9cf3a210caa13037610fc0c9514bd91b56ac7c55b1e27173f02f2df2eb935f29"
+layer   = "2026.11.32"
+digest  = "sha256:ccda895f08dd03949e973a74b9526a9a01aa2e281a7df762b7fd52c403068cd5"

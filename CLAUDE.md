@@ -29,6 +29,6 @@ not vendor or build them. Design: `docs/design.md`.
   `contents: read` and pass no secrets.
 - A check counts only once a planted bad input has turned it red (plant).
 - No new Python: checkers are Rust, as WASI components where possible.
-- rivet comes from the varve pin (`varve.toml`, realm covalent); run it as
+- rivet comes from the varve pin (`varve.toml`, realm pulseengine); run it as
   `rivet` through the shim, never an ambient binary.
 - Main is protected: signed commits, PRs only, merge on green required checks.

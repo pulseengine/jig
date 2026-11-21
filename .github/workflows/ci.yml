@@ -23,7 +23,7 @@ defaults:
     shell: bash
 
 env:
-  # The rivet in the varve.toml layer (covalent 2026.11.19 composes rivet
+  # The rivet in the varve.toml layer (pulseengine 2026.11.32 carries rivet
   # 0.43.0). sha256 of rivet-v0.43.0-x86_64-unknown-linux-gnu.tar.gz from the
   # release's SHA256SUMS.txt, recorded 2026-11-21; the extracted binary
   # (a8c3dec7…f770) matches the digest in the signed layer.
