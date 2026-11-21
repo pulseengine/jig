@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::json;
 
-use jig::{caller, classes, docs, pins, verdict};
+use jig::{caller, docs, pins, verdict};
 
 /// Exit codes: 0 check passed, 1 check failed or nothing compared, 2 could not run.
 #[derive(Parser)]
@@ -40,6 +40,9 @@ enum Cmd {
         /// The baseline job's id.
         #[arg(long, default_value = "baseline")]
         baseline_job: String,
+        /// The caller's classify job: its outputs are the class names plus `run_all`.
+        #[arg(long, default_value = "classify")]
+        classifier_job: String,
         /// Job ids that may never be skipped (space or comma separated; repeatable).
         #[arg(long)]
         never_skip: Vec<String>,
@@ -58,15 +61,6 @@ enum Cmd {
         /// Directory to scan.
         #[arg(default_value = ".")]
         dir: PathBuf,
-    },
-    /// Check a sieve.toml against the class vocabulary (see `jig docs classes`).
-    Classes {
-        /// The sieve config to check.
-        #[arg(long)]
-        config: Option<PathBuf>,
-        /// Print the vocabulary, one class per line.
-        #[arg(long)]
-        list: bool,
     },
     /// Check a caller workflow's shape (see `jig docs caller`).
     Caller {
@@ -99,6 +93,7 @@ fn main() -> ExitCode {
             workflow,
             self_job,
             baseline_job,
+            classifier_job,
             never_skip,
             advisory,
             delegated,
@@ -111,6 +106,7 @@ fn main() -> ExitCode {
             let opts = verdict::Opts {
                 self_job,
                 baseline_job,
+                classifier_job,
                 never_skip: verdict::split_ids(&never_skip),
                 advisory: verdict::split_ids(&advisory),
                 delegated,
@@ -124,7 +120,6 @@ fn main() -> ExitCode {
             )
         }
         Cmd::Pins { dir } => run_pins(cli.format, &dir),
-        Cmd::Classes { config, list } => run_classes(cli.format, config.as_deref(), list),
         Cmd::Caller {
             workflow,
             required_job,
@@ -238,43 +233,6 @@ fn report(f: Format, verdict: &str, reasons: &[String]) {
             println!("  {r}");
         }
     }
-}
-
-fn run_classes(f: Format, config: Option<&Path>, list: bool) -> u8 {
-    if list {
-        for c in classes::VOCABULARY {
-            println!("{c}");
-        }
-        return PASS;
-    }
-    let Some(config) = config else {
-        return could_not_run(f, "--config is required (or use --list)");
-    };
-    let rep = match read(config).and_then(|t| classes::check(&t)) {
-        Ok(r) => r,
-        Err(e) => return could_not_run(f, &e),
-    };
-    let reasons = rep.reasons();
-    let code = if reasons.is_empty() { PASS } else { FAIL };
-    if f == Format::Json {
-        println!(
-            "{}",
-            json!({
-                "verdict": if code == PASS { "green" } else { "red" },
-                "defined": rep.defined,
-                "unknown": rep.unknown,
-                "reasons": reasons,
-            })
-        );
-    } else if code == PASS {
-        println!("classes: {}", rep.defined.join(" "));
-    } else {
-        println!("classes: red");
-        for r in &reasons {
-            println!("  {r}");
-        }
-    }
-    code
 }
 
 fn run_caller(f: Format, workflow: &Path, opts: &caller::Opts) -> u8 {

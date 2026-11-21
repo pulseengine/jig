@@ -25,22 +25,28 @@ on: pull_request
 jobs:
   baseline:
     uses: o/r/.github/workflows/b.yml@0123456789abcdef0123456789abcdef01234567
+  classify:
+    runs-on: x
   build:
-    needs: baseline
-    if: ${{ !cancelled() && (needs.baseline.result != 'success' || needs.baseline.outputs.build != 'false') }}
+    needs: [baseline, classify]
+    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.build != 'false') }}
     runs-on: x
   lint:
     runs-on: x
   fuzz:
     runs-on: x
   required:
-    needs: [baseline, build, lint, fuzz]
+    needs: [baseline, classify, build, lint, fuzz]
     if: always()
     runs-on: x
 ";
 
+/// `toJSON(needs)`: the baseline has no class outputs; the caller's `classify`
+/// job carries them.
 fn needs(base: &str, outs: &str, rest: &[(&str, &str)]) -> String {
-    let mut s = format!(r#"{{"baseline":{{"result":"{base}","outputs":{outs}}}"#);
+    let mut s = format!(
+        r#"{{"baseline":{{"result":"{base}","outputs":{{}}}},"classify":{{"result":"success","outputs":{outs}}}"#
+    );
     for (id, r) in rest {
         s += &format!(r#","{id}":{{"result":"{r}"}}"#);
     }
@@ -377,7 +383,7 @@ fn the_table_has_the_required_cases_and_all_agree() {
         "baseline failed",
         "baseline skipped",
         "selected-class skip",
-        "unselected-class skip",
+        "classifier output false + class-gated skip",
         "never-skip job skipped",
         "run_all with skip",
         "skip with no class",
@@ -411,6 +417,109 @@ fn a_row_with_a_flipped_expectation_is_caught() {
     assert_eq!(verdict::disagreeing(&rows), vec![n_red + 1]);
 }
 
+// ---- classifier job ----
+
+const SKIP_BUILD: [(&str, &str); 3] = [
+    ("build", "skipped"),
+    ("lint", "success"),
+    ("fuzz", "success"),
+];
+
+// rivet: verifies REQ-001
+#[test]
+fn classes_come_from_the_classifier_job_and_a_missing_output_is_selected() {
+    let d = dir("cls");
+    // Output "false": green. Output "true": red. Output missing: red.
+    let o = run(&d, &needs("success", F, &SKIP_BUILD), WF, &[]);
+    assert_eq!(code(&o), 0, "{}", stdout(&o));
+    let o = run(&d, &needs("success", T, &SKIP_BUILD), WF, &[]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("class 'build' was selected"));
+    let o = run(&d, &needs("success", "{}", &SKIP_BUILD), WF, &[]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("class 'build' was selected"));
+}
+
+// rivet: verifies REQ-001
+#[test]
+fn an_absent_or_unsuccessful_classifier_selects_every_class() {
+    let d = dir("cls-absent");
+    // Workflow without a classify job; the skip is class-gated: red.
+    let wf = WF
+        .replace("  classify:\n    runs-on: x\n", "")
+        .replace("classify, ", "");
+    let n = r#"{"baseline":{"result":"success","outputs":{}},"build":{"result":"skipped"},"lint":{"result":"success"},"fuzz":{"result":"success"}}"#;
+    let o = run(&d, n, &wf, &[]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("class 'build' was selected"));
+    // Classifier failed or cancelled: red as a job and the skip is red too.
+    for r in ["failure", "cancelled", "skipped"] {
+        let n = SKIP_BUILD.iter().fold(
+            format!(
+                r#"{{"baseline":{{"result":"success","outputs":{{}}}},"classify":{{"result":"{r}","outputs":{F}}}"#
+            ),
+            |s, (id, res)| s + &format!(r#","{id}":{{"result":"{res}"}}"#),
+        ) + "}";
+        let o = run(&d, &n, WF, &[]);
+        assert_eq!(code(&o), 1, "classifier {r}");
+        assert!(
+            stdout(&o).contains("class 'build' was selected"),
+            "{r}: {}",
+            stdout(&o)
+        );
+        assert!(stdout(&o).contains("'classify'"), "{r}: {}", stdout(&o));
+    }
+}
+
+// rivet: verifies REQ-001
+#[test]
+fn the_old_baseline_output_form_names_no_class() {
+    let d = dir("cls-old");
+    let wf = WF.replace("needs.classify.", "needs.baseline.");
+    let o = run(&d, &needs("success", F, &SKIP_BUILD), &wf, &[]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("cannot be determined"));
+}
+
+// rivet: verifies REQ-001
+#[test]
+fn classifier_job_flag_renames_the_classifier() {
+    let d = dir("cls-flag");
+    let wf = WF.replace("classify", "sorter");
+    let n = needs("success", F, &SKIP_BUILD).replace("classify", "sorter");
+    let o = run(&d, &n, &wf, &["--classifier-job", "sorter"]);
+    assert_eq!(code(&o), 0, "{}", stdout(&o));
+    let n = needs("success", T, &SKIP_BUILD).replace("classify", "sorter");
+    let o = run(&d, &n, &wf, &["--classifier-job", "sorter"]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("class 'build' was selected"));
+    // Without the flag the default id `classify` reads no class from the if:.
+    let o = run(
+        &d,
+        &needs("success", F, &SKIP_BUILD).replace("classify", "sorter"),
+        &wf,
+        &[],
+    );
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("cannot be determined"));
+}
+
+// rivet: verifies REQ-005
+#[test]
+fn self_test_covers_the_classifier_job() {
+    let rows = verdict::table();
+    for want in [
+        "classifier absent + class-gated skip",
+        "classifier output false + class-gated skip",
+        "class output missing counts as selected",
+        "if: reads needs.baseline.outputs (old form)",
+        "--classifier-job other, output false + skip",
+    ] {
+        assert!(rows.iter().any(|r| r.name == want), "no row named {want}");
+    }
+    assert_eq!(verdict::disagreeing(&rows), Vec::<usize>::new());
+}
+
 // ---- delegation (REQ-015) ----
 
 fn wf_d(proofs_needs: &str) -> String {
@@ -420,9 +529,11 @@ on: pull_request
 jobs:
   baseline:
     uses: o/r/.github/workflows/b.yml@0123456789abcdef0123456789abcdef01234567
+  classify:
+    runs-on: x
   build:
-    needs: baseline
-    if: ${{{{ !cancelled() && (needs.baseline.result != 'success' || needs.baseline.outputs.build != 'false') }}}}
+    needs: [baseline, classify]
+    if: ${{{{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.build != 'false') }}}}
     runs-on: x
   kani:
     runs-on: x
@@ -430,7 +541,7 @@ jobs:
 {proofs_needs}    if: always()
     runs-on: x
   required:
-    needs: [baseline, build, proofs]
+    needs: [baseline, classify, build, proofs]
     if: always()
     runs-on: x
 "

@@ -5,6 +5,7 @@ jig verdict: the required / verdict decision (REQ-001, REQ-002, REQ-005)
 
   jig verdict --needs needs.json --workflow .github/workflows/ci.yml \\
       [--self-job required] [--baseline-job baseline] \\
+      [--classifier-job classify] \\
       [--never-skip 'a b'] [--advisory c,d] [--delegated job=aggregator] \\
       [--format text|json]
   jig verdict --self-test
@@ -18,11 +19,23 @@ Red (exit 1), one reason line each, if:
   - a non-advisory job failed or was cancelled;
   - any result is not success/failure/cancelled/skipped;
   - a non-advisory job was skipped and it is never-skip, run_all is true, its
-    class (needs.<baseline>.outputs.<class> in its if:) is selected, or no
+    class (needs.<classifier>.outputs.<class> in its if:) is selected, or no
     class can be read from its if:;
+  - the classifier job is in needs but skipped, failed or cancelled;
   - a workflow job (except the self job and advisory jobs) is missing from
     needs, or a needs key is not a workflow job.
-A class is selected unless the baseline's output for it is exactly \"false\".
+
+Classes: each caller keeps its own classify job (any id, default `classify`,
+--classifier-job) whose outputs are the adopter's own sieve class names plus
+run_all. There is no fixed class vocabulary and the baseline job has no class
+outputs; a gated job's if: reads needs.<classifier>.outputs.<class> (the old
+needs.baseline.outputs.<class> form names no class, so a skip is red). A
+class is selected unless the classifier's output for it is exactly \"false\":
+a missing output is selected (fail closed), and run_all == \"true\" selects
+every class. If the classifier job is absent from needs, or did not succeed,
+every class counts as selected, so any class-gated skip is red. The baseline
+job keeps its own rule: it must be present and success. A repo without sieve
+needs no classifier job; it simply has no class-gated jobs.
 
 --delegated <job>=<aggregator> (repeatable; comma or space separated pairs,
 REQ-015): the delegated job's own result is not judged (not failure, not
@@ -65,25 +78,6 @@ When in doubt they fail closed (unbalanced quotes, option values).
 Exit: 0 passed, 1 failed or nothing compared, 2 could not run.
 ";
 
-const CLASSES: &str = "\
-jig classes: the sieve config uses only the fleet class vocabulary (REQ-016)
-
-  jig classes --config sieve.toml [--format text|json]
-  jig classes --list
-
-The vocabulary (also `jig classes --list`, one per line):
-  build unit_test integration emulator coverage mutation fuzz bench docs
-
-The config is TOML with schema = \"sieve.config.v1\" and one [class.<name>]
-table per class. Red (exit 1): a class name outside the vocabulary (each is
-named), or no [class.*] at all (nothing was compared). Green prints the
-vocabulary classes the config defines.
-
-Exit: 0 passed, 1 failed or nothing compared, 2 could not run (unreadable
-file, not TOML, schema missing or not sieve.config.v1, class not a table of
-tables).
-";
-
 const CALLER: &str = "\
 jig caller: the shape of a caller workflow (REQ-017)
 
@@ -107,14 +101,13 @@ Exit: 0 passed, 1 failed, 2 could not run (unreadable or unparseable
 workflow, YAML merge key, no jobs mapping).
 ";
 
-pub const TOPICS: [(&str, &str, &str); 4] = [
+pub const TOPICS: [(&str, &str, &str); 3] = [
     (
         "verdict",
         "the required / verdict decision and its self-test",
         VERDICT,
     ),
     ("pins", "action, toolchain and pip pin check", PINS),
-    ("classes", "sieve.toml class vocabulary check", CLASSES),
     ("caller", "caller workflow shape check", CALLER),
 ];
 

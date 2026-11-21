@@ -10,13 +10,15 @@ use crate::yaml::{self, Node};
 
 /// Results GitHub reports for a needed job.
 const KNOWN: [&str; 4] = ["success", "failure", "cancelled", "skipped"];
-/// Baseline outputs that are not job classes.
-const NON_CLASS: [&str; 3] = ["run_all", "reason", "classes"];
+/// Classifier outputs that are not job classes.
+const NON_CLASS: [&str; 1] = ["run_all"];
 
 #[derive(Debug, Clone)]
 pub struct Opts {
     pub self_job: String,
     pub baseline_job: String,
+    /// The caller job whose outputs are the adopter's class names plus `run_all`.
+    pub classifier_job: String,
     pub never_skip: BTreeSet<String>,
     pub advisory: BTreeSet<String>,
     /// Delegated job -> the caller aggregator that judges it.
@@ -28,6 +30,7 @@ impl Default for Opts {
         Opts {
             self_job: "required".into(),
             baseline_job: "baseline".into(),
+            classifier_job: "classify".into(),
             never_skip: BTreeSet::new(),
             advisory: BTreeSet::new(),
             delegated: BTreeMap::new(),
@@ -158,9 +161,9 @@ pub fn parse_workflow(text: &str) -> Result<Workflow, String> {
     Ok(Workflow { jobs, needs })
 }
 
-/// Class names a job's `if:` reads as `needs.<baseline>.outputs.<class>`.
-pub fn classes_of(cond: &str, baseline: &str) -> Vec<String> {
-    let pat = format!("needs.{baseline}.outputs.");
+/// Class names a job's `if:` reads as `needs.<classifier>.outputs.<class>`.
+pub fn classes_of(cond: &str, classifier: &str) -> Vec<String> {
+    let pat = format!("needs.{classifier}.outputs.");
     let ident = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
     let mut out = Vec::new();
     let mut from = 0;
@@ -196,8 +199,13 @@ pub fn judge(needs: &Needs, wf: &Workflow, o: &Opts) -> Vec<String> {
         )),
         Some(_) => {}
     }
+    // Only a successful classifier's outputs are read. If it is absent or did
+    // not succeed, no output is known, so every class counts as selected
+    // (fail closed); a failed or skipped classifier is also red as a job.
+    let c = &o.classifier_job;
+    let classifier = needs.get(c).filter(|j| j.result == "success");
     let out = |name: &str| {
-        baseline
+        classifier
             .and_then(|j| j.outputs.get(name))
             .map(String::as_str)
     };
@@ -215,6 +223,9 @@ pub fn judge(needs: &Needs, wf: &Workflow, o: &Opts) -> Vec<String> {
         match j.result.as_str() {
             "success" => {}
             "failure" | "cancelled" | "skipped" if id == b => {} // reported above
+            "skipped" if id == c => r.push(format!(
+                "classifier job '{c}' result is 'skipped', not success"
+            )),
             "failure" | "cancelled" => {
                 if !advisory {
                     r.push(format!("job '{id}' result is {}", j.result));
@@ -230,7 +241,7 @@ pub fn judge(needs: &Needs, wf: &Workflow, o: &Opts) -> Vec<String> {
                     r.push(format!("job '{id}' was skipped while run_all is true"));
                 } else {
                     let classes = match wf.jobs.get(id) {
-                        Some(Some(cond)) => classes_of(cond, b),
+                        Some(Some(cond)) => classes_of(cond, c),
                         _ => Vec::new(),
                     };
                     if classes.is_empty() {
@@ -354,6 +365,8 @@ pub struct Row {
     pub advisory: Vec<&'static str>,
     /// `job=aggregator` pairs, as given to --delegated.
     pub delegated: Vec<&'static str>,
+    /// `--classifier-job`; `None` is the default (`classify`).
+    pub classifier: Option<&'static str>,
     pub expect: Expect,
 }
 
@@ -367,6 +380,7 @@ pub enum Outcome {
 
 pub fn run_row(row: &Row) -> Outcome {
     let opts = Opts {
+        classifier_job: row.classifier.unwrap_or("classify").to_string(),
         never_skip: row.never_skip.iter().map(|s| s.to_string()).collect(),
         advisory: row.advisory.iter().map(|s| s.to_string()).collect(),
         ..Opts::default()
@@ -418,34 +432,67 @@ on: pull_request
 jobs:
   baseline:
     uses: pulseengine/jig/.github/workflows/baseline.yml@0123456789abcdef0123456789abcdef01234567
+  classify:
+    runs-on: ubuntu-24.04
   build:
-    needs: baseline
-    if: ${{ !cancelled() && (needs.baseline.result != 'success' || needs.baseline.outputs.build != 'false') }}
+    needs: [baseline, classify]
+    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.build != 'false') }}
     runs-on: ubuntu-24.04
   test:
-    needs: baseline
-    if: ${{ !cancelled() && (needs.baseline.result != 'success' || needs.baseline.outputs.unit_test != 'false') }}
+    needs: [baseline, classify]
+    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.unit_test != 'false') }}
     runs-on: ubuntu-24.04
   fuzz:
-    needs: baseline
-    if: ${{ !cancelled() && (needs.baseline.result != 'success' || needs.baseline.outputs.fuzz != 'false') }}
+    needs: [baseline, classify]
+    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.fuzz != 'false') }}
     runs-on: ubuntu-24.04
   clippy:
     runs-on: ubuntu-24.04
   required:
-    needs: [baseline, build, test, fuzz, clippy]
+    needs: [baseline, classify, build, test, fuzz, clippy]
     if: always()
     runs-on: ubuntu-24.04
 ";
 
-/// `toJSON(needs)` for the fixture: baseline result and outputs, then the rest.
-fn nj(base: &str, outs: &str, rest: &[(&str, &str)]) -> String {
-    let mut s = format!(r#"{{"baseline":{{"result":"{base}","outputs":{outs}}}"#);
+fn workflow() -> String {
+    WORKFLOW.to_string()
+}
+
+/// The fixture with its classifier job named `other` instead of `classify`.
+fn workflow_other() -> String {
+    WORKFLOW.replace("classify", "other")
+}
+
+/// The fixture without any classifier job (a repo whose gated jobs still
+/// read `needs.classify.outputs.*`).
+fn workflow_no_classifier() -> String {
+    WORKFLOW
+        .replace("  classify:\n    runs-on: ubuntu-24.04\n", "")
+        .replace("classify, ", "")
+}
+
+/// The fixture as it read before the classifier moved out of the baseline.
+fn workflow_old_form() -> String {
+    WORKFLOW.replace("needs.classify.", "needs.baseline.")
+}
+
+/// `toJSON(needs)` for the fixture: the baseline (no class outputs), then the
+/// classifier job `(id, result, outputs)` if any, then the rest.
+fn njc(base: &str, cls: Option<(&str, &str, &str)>, rest: &[(&str, &str)]) -> String {
+    let mut s = format!(r#"{{"baseline":{{"result":"{base}","outputs":{{}}}}"#);
+    if let Some((id, res, outs)) = cls {
+        s += &format!(r#","{id}":{{"result":"{res}","outputs":{outs}}}"#);
+    }
     for (id, res) in rest {
         s += &format!(r#","{id}":{{"result":"{res}","outputs":{{}}}}"#);
     }
     s.push('}');
     s
+}
+
+/// The common case: a successful `classify` job with these outputs.
+fn nj(base: &str, outs: &str, rest: &[(&str, &str)]) -> String {
+    njc(base, Some(("classify", "success", outs)), rest)
 }
 
 fn row(
@@ -458,10 +505,11 @@ fn row(
     Row {
         name,
         needs,
-        workflow: WORKFLOW.to_string(),
+        workflow: workflow(),
         never_skip: never_skip.to_vec(),
         advisory: advisory.to_vec(),
         delegated: vec![],
+        classifier: None,
         expect,
     }
 }
@@ -550,7 +598,7 @@ pub fn table() -> Vec<Row> {
             Expect::Red("class 'build' was selected"),
         ),
         row(
-            "unselected-class skip",
+            "classifier output false + class-gated skip",
             nj("success", OUTS_NONE, &with("build", "skipped")),
             &[],
             &[],
@@ -642,6 +690,7 @@ pub fn table() -> Vec<Row> {
         never_skip: vec![],
         advisory: vec![],
         delegated: vec![],
+        classifier: None,
         expect: Expect::CouldNotRun,
     };
     rows.push(bad_wf(
@@ -650,8 +699,142 @@ pub fn table() -> Vec<Row> {
     ));
     rows.push(bad_wf("workflow without jobs", "name: CI\non: push\n"));
     rows.push(bad_wf("workflow that is not YAML", "jobs: [unclosed\n"));
+    rows.extend(classifier_rows());
     rows.extend(delegation_rows());
     rows
+}
+
+/// Classifier-job rows: the class outputs come from the caller's own
+/// classifier job, never from the baseline.
+fn classifier_rows() -> Vec<Row> {
+    let c = |name, needs: String, wf: String, classifier, expect| Row {
+        name,
+        needs,
+        workflow: wf,
+        never_skip: vec![],
+        advisory: vec![],
+        delegated: vec![],
+        classifier,
+        expect,
+    };
+    let skip_build = with("build", "skipped");
+    let rest_ok = OK.to_vec();
+    vec![
+        c(
+            "classifier absent + class-gated skip",
+            njc("success", None, &skip_build),
+            workflow_no_classifier(),
+            None,
+            Expect::Red("class 'build' was selected"),
+        ),
+        c(
+            "classifier absent, no skip",
+            njc("success", None, &rest_ok),
+            workflow_no_classifier(),
+            None,
+            Expect::Green,
+        ),
+        c(
+            "classifier failed + class-gated skip",
+            njc(
+                "success",
+                Some(("classify", "failure", OUTS_NONE)),
+                &skip_build,
+            ),
+            workflow(),
+            None,
+            Expect::Red("class 'build' was selected"),
+        ),
+        c(
+            "classifier failed is red as a job",
+            njc(
+                "success",
+                Some(("classify", "failure", OUTS_NONE)),
+                &rest_ok,
+            ),
+            workflow(),
+            None,
+            Expect::Red("job 'classify' result is failure"),
+        ),
+        c(
+            "classifier cancelled is red as a job",
+            njc(
+                "success",
+                Some(("classify", "cancelled", OUTS_NONE)),
+                &rest_ok,
+            ),
+            workflow(),
+            None,
+            Expect::Red("job 'classify' result is cancelled"),
+        ),
+        c(
+            "classifier skipped is red as a job",
+            njc(
+                "success",
+                Some(("classify", "skipped", OUTS_NONE)),
+                &rest_ok,
+            ),
+            workflow(),
+            None,
+            Expect::Red("classifier job 'classify' result is 'skipped'"),
+        ),
+        c(
+            "class output on the baseline is not read",
+            format!(
+                r#"{{"baseline":{{"result":"success","outputs":{OUTS_NONE}}},"classify":{{"result":"success","outputs":{{}}}},"build":{{"result":"skipped"}},"test":{{"result":"success"}},"fuzz":{{"result":"success"}},"clippy":{{"result":"success"}}}}"#
+            ),
+            workflow(),
+            None,
+            Expect::Red("class 'build' was selected"),
+        ),
+        c(
+            "if: reads needs.baseline.outputs (old form)",
+            nj("success", OUTS_NONE, &skip_build),
+            workflow_old_form(),
+            None,
+            Expect::Red("class cannot be determined"),
+        ),
+        c(
+            "--classifier-job other, output false + skip",
+            njc(
+                "success",
+                Some(("other", "success", OUTS_NONE)),
+                &skip_build,
+            ),
+            workflow_other(),
+            Some("other"),
+            Expect::Green,
+        ),
+        c(
+            "--classifier-job other, class selected + skip",
+            njc(
+                "success",
+                Some(("other", "success", r#"{"build":"true"}"#)),
+                &skip_build,
+            ),
+            workflow_other(),
+            Some("other"),
+            Expect::Red("class 'build' was selected"),
+        ),
+        c(
+            "--classifier-job other, if: still reads needs.classify",
+            njc(
+                "success",
+                Some(("other", "success", OUTS_NONE)),
+                &skip_build,
+            ),
+            workflow(),
+            Some("other"),
+            Expect::Red("class cannot be determined"),
+        ),
+        c(
+            "default classifier, if: reads needs.other",
+            nj("success", OUTS_NONE, &skip_build),
+            workflow_other(),
+            None,
+            Expect::Red("class cannot be determined"),
+        ),
+    ]
 }
 
 /// Caller workflow with a delegated `kani` job covered by the `proofs`
@@ -664,9 +847,11 @@ on: pull_request
 jobs:
   baseline:
     uses: pulseengine/jig/.github/workflows/baseline.yml@0123456789abcdef0123456789abcdef01234567
+  classify:
+    runs-on: ubuntu-24.04
   build:
-    needs: baseline
-    if: ${{{{ !cancelled() && (needs.baseline.result != 'success' || needs.baseline.outputs.build != 'false') }}}}
+    needs: [baseline, classify]
+    if: ${{{{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.build != 'false') }}}}
     runs-on: ubuntu-24.04
   kani:
     runs-on: ubuntu-24.04
@@ -674,7 +859,7 @@ jobs:
 {proofs_needs}    if: always()
     runs-on: ubuntu-24.04
   required:
-    needs: [baseline, build, proofs]
+    needs: [baseline, classify, build, proofs]
     if: always()
     runs-on: ubuntu-24.04
 "
@@ -694,6 +879,7 @@ fn delegation_rows() -> Vec<Row> {
             never_skip: never.to_vec(),
             advisory: vec![],
             delegated: del.to_vec(),
+            classifier: None,
             expect,
         };
     let base = [("build", "success"), ("proofs", "success")];
