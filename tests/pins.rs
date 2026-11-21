@@ -516,3 +516,92 @@ fn pip_hash_check_survives_escaped_quotes_and_option_values() {
         "echo 'a # b' && pip install --require-hashes -r r.txt",
     ));
 }
+
+// rivet: verifies REQ-008
+#[test]
+fn the_repo_root_action_is_a_local_use() {
+    let d = dir("root-action");
+    put(
+        &d,
+        ".github/workflows/ci.yml",
+        "on: push\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: ./\n",
+    );
+    put(
+        &d,
+        "action.yml",
+        "runs:\n  using: composite\n  steps:\n    - run: echo hi\n      shell: bash\n",
+    );
+    let o = pins(&d.0, &[]);
+    assert_eq!(code(&o), 0, "{}", String::from_utf8_lossy(&o.stdout));
+    // Without a root action.yml the same use is red, once.
+    let d = dir("root-action-missing");
+    put(
+        &d,
+        ".github/workflows/ci.yml",
+        "on: push\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: ./\n",
+    );
+    let o = pins(&d.0, &[]);
+    assert_eq!(code(&o), 1);
+    assert_eq!(
+        String::from_utf8_lossy(&o.stdout).matches("uses:").count(),
+        1
+    );
+}
+
+// rivet: verifies REQ-008
+#[test]
+fn a_toolchain_from_a_literal_env_version_is_pinned() {
+    let tc = |env: &str, val: &str| {
+        format!(
+            "on: push\n{env}jobs:\n  b:\n    runs-on: x\n    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: {val}\n"
+        )
+    };
+    assert_green(&tc(
+        "env:\n  RUST_VERSION: 1.92.0\n",
+        "${{ env.RUST_VERSION }}",
+    ));
+    assert_red(
+        &tc("env:\n  RUST_VERSION: stable\n", "${{ env.RUST_VERSION }}"),
+        "not a version",
+    );
+    assert_red(&tc("", "${{ env.RUST_VERSION }}"), "not a version");
+    // Two definitions, one floating: red.
+    let two = format!(
+        "on: push\nenv:\n  V: 1.92.0\njobs:\n  b:\n    runs-on: x\n    env:\n      V: stable\n    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: ${{{{ env.V }}}}\n"
+    );
+    assert_red(&two, "not a version");
+}
+
+// rivet: verifies REQ-008
+#[test]
+fn a_pinned_rust_toolchain_file_pins_the_toolchain() {
+    let w = format!(
+        "on: push\njobs:\n  b:\n    runs-on: x\n    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: stable\n      - uses: dtolnay/rust-toolchain@{SHA}\n"
+    );
+    for (file, body, want) in [
+        (
+            "rust-toolchain.toml",
+            "[toolchain]\nchannel = \"1.92.0\"\n",
+            0,
+        ),
+        (
+            "rust-toolchain.toml",
+            "[toolchain]\nchannel = \"nightly-2026-11-01\"\n",
+            0,
+        ),
+        ("rust-toolchain", "1.92.0\n", 0),
+        (
+            "rust-toolchain.toml",
+            "[toolchain]\nchannel = \"stable\"\n",
+            1,
+        ),
+        ("none", "", 1),
+    ] {
+        let d = dir("tc-file");
+        put(&d, ".github/workflows/ci.yml", &w);
+        if file != "none" {
+            put(&d, file, body);
+        }
+        assert_eq!(code(&pins(&d.0, &[])), want, "{file}: {body}");
+    }
+}

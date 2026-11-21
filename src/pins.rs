@@ -4,7 +4,7 @@
 //! line regex over the file. A file that does not parse, or uses a merge key,
 //! is a violation, and a scan that finds no file compared nothing.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -53,10 +53,9 @@ fn hex_lower(s: &str, n: usize) -> bool {
 /// Why a `uses:` value is not an accepted pin, or None when it is.
 pub fn uses_problem(u: &str) -> Option<String> {
     if let Some(rest) = u.strip_prefix("./") {
-        return if rest.is_empty() || rest.split('/').any(|p| p == "..") {
-            Some(format!(
-                "local path '{u}' is empty or leaves the repository"
-            ))
+        // `./` alone is the action at the repository root.
+        return if rest.split('/').any(|p| p == "..") {
+            Some(format!("local path '{u}' leaves the repository"))
         } else {
             None
         };
@@ -250,6 +249,11 @@ fn unhashed_pip(run: &str) -> Vec<usize> {
 struct Walker<'a> {
     file: &'a str,
     report: Report,
+    /// Every literal value each `env:` key is given anywhere in the document.
+    env: BTreeMap<String, Vec<String>>,
+    /// The repository pins its toolchain in rust-toolchain(.toml), which
+    /// rustup obeys whatever the action installed.
+    toolchain_file: bool,
 }
 
 impl Walker<'_> {
@@ -330,7 +334,27 @@ impl Walker<'_> {
         }
     }
 
+    /// A version, or `${{ env.NAME }}` whose every literal definition is one.
+    fn pinned_toolchain(&self, value: &str) -> bool {
+        if is_toolchain_version(value) {
+            return true;
+        }
+        let inner = value
+            .strip_prefix("${{")
+            .and_then(|v| v.strip_suffix("}}"))
+            .map(str::trim);
+        match inner.and_then(|v| v.strip_prefix("env.")) {
+            Some(name) => self.env.get(name).is_some_and(|defs| {
+                !defs.is_empty() && defs.iter().all(|d| is_toolchain_version(d))
+            }),
+            None => false,
+        }
+    }
+
     fn toolchain(&mut self, step: &Node, uses_line: usize, path: &str) {
+        if self.toolchain_file {
+            return;
+        }
         match step.get("with").and_then(|w| w.get("toolchain")) {
             None => self.add(
                 uses_line,
@@ -339,7 +363,7 @@ impl Walker<'_> {
                     .into(),
             ),
             Some(Node::Scalar { value, line }) => {
-                if !is_toolchain_version(value) {
+                if !self.pinned_toolchain(value) {
                     self.add(
                         *line,
                         path,
@@ -354,6 +378,12 @@ impl Walker<'_> {
 
 /// Check one workflow or action file's text.
 pub fn check_text(file: &str, text: &str) -> Report {
+    check_text_with(file, text, false)
+}
+
+/// As [`check_text`], told whether the repository pins its toolchain in a
+/// rust-toolchain file.
+pub fn check_text_with(file: &str, text: &str, toolchain_file: bool) -> Report {
     match yaml::parse(text) {
         Err(e) => Report {
             uses: 0,
@@ -366,9 +396,13 @@ pub fn check_text(file: &str, text: &str) -> Report {
             }],
         },
         Ok(root) => {
+            let mut env = BTreeMap::new();
+            env_defs(&root, &mut env);
             let mut w = Walker {
                 file,
                 report: Report::default(),
+                env,
+                toolchain_file,
             };
             w.walk(&root, "");
             w.report
@@ -435,6 +469,7 @@ pub struct DirReport {
 /// Scan a directory. `Err` means the scan could not run (exit 2).
 pub fn check_dir(root: &Path) -> Result<DirReport, String> {
     let files = scan_files(root)?;
+    let tc_file = toolchain_file_pinned(root);
     let scanned: BTreeSet<String> = files.iter().map(|f| shown(root, f)).collect();
     let mut rep = DirReport {
         files: files.len(),
@@ -444,7 +479,7 @@ pub fn check_dir(root: &Path) -> Result<DirReport, String> {
     for f in files {
         let name = shown(root, &f);
         let text = fs::read_to_string(&f).map_err(|e| format!("cannot read {name}: {e}"))?;
-        let r = check_text(&name, &text);
+        let r = check_text_with(&name, &text, tc_file);
         rep.uses += r.uses;
         rep.violations.extend(r.violations);
         for (line, path, value) in r.local {
@@ -476,16 +511,16 @@ fn shown(root: &Path, f: &Path) -> String {
 fn unscanned_local(value: &str, scanned: &BTreeSet<String>) -> Option<String> {
     let rel = value.trim_start_matches("./").trim_end_matches('/');
     let parts: Vec<&str> = rel.split('/').collect();
-    if rel.is_empty()
-        || parts
-            .iter()
-            .any(|p| p.is_empty() || *p == "." || *p == "..")
-    {
-        return Some(format!(
-            "local path '{value}' is empty or leaves the repository"
-        ));
+    if parts.contains(&"..") {
+        return None; // already reported by uses_problem
     }
-    let candidates = if rel.ends_with(".yml") || rel.ends_with(".yaml") {
+    if !rel.is_empty() && parts.iter().any(|p| p.is_empty() || *p == ".") {
+        return Some(format!("local path '{value}' is not a plain relative path"));
+    }
+    // `./` alone is the action at the repository root.
+    let candidates = if rel.is_empty() {
+        vec!["action.yml".to_string(), "action.yaml".to_string()]
+    } else if rel.ends_with(".yml") || rel.ends_with(".yaml") {
         vec![rel.to_string()]
     } else {
         vec![format!("{rel}/action.yml"), format!("{rel}/action.yaml")]
@@ -497,4 +532,42 @@ fn unscanned_local(value: &str, scanned: &BTreeSet<String>) -> Option<String> {
             "local '{value}' names no file this scan read (missing, symlinked, or in a skipped directory), so it was not checked"
         ))
     }
+}
+
+/// Collect every `env:` mapping's scalar values, by key, anywhere in the tree.
+fn env_defs(node: &Node, out: &mut BTreeMap<String, Vec<String>>) {
+    match node {
+        Node::Scalar { .. } => {}
+        Node::Seq { items, .. } => items.iter().for_each(|n| env_defs(n, out)),
+        Node::Map { entries, .. } => {
+            for e in entries {
+                if let ("env", Node::Map { entries: vars, .. }) = (e.key.as_str(), &e.value) {
+                    for v in vars {
+                        let val = match &v.value {
+                            Node::Scalar { value, .. } => value.clone(),
+                            // A non-scalar definition is never a version.
+                            _ => String::new(),
+                        };
+                        out.entry(v.key.clone()).or_default().push(val);
+                    }
+                }
+                env_defs(&e.value, out);
+            }
+        }
+    }
+}
+
+/// Does the repository root pin a toolchain version in rust-toolchain(.toml)?
+fn toolchain_file_pinned(root: &Path) -> bool {
+    if let Ok(t) = fs::read_to_string(root.join("rust-toolchain.toml")) {
+        return t.lines().any(|l| {
+            let l = l.trim();
+            l.strip_prefix("channel")
+                .map(str::trim_start)
+                .and_then(|r| r.strip_prefix('='))
+                .map(|v| v.trim().trim_matches('"'))
+                .is_some_and(is_toolchain_version)
+        });
+    }
+    fs::read_to_string(root.join("rust-toolchain")).is_ok_and(|t| is_toolchain_version(t.trim()))
 }
