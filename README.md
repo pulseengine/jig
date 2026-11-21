@@ -11,7 +11,8 @@ should own alone:
   `package-lock.json`, and Bazel's lockfile mode;
 - the action-pin check: every `uses:` is a 40-hex SHA and every Rust
   toolchain a literal version (`jig pins`);
-- sieve's classify step, which decides which job classes a change needs;
+- the verdict's reading of sieve: a skip passes only for a class the
+  caller's own sieve classify job did not select;
 - a required aggregator, `required / verdict`, that is red on any failure,
   cancellation, unselected skip, empty `needs` or caller job missing from
   `needs` (`jig verdict`), and checks the caller workflow's shape
@@ -44,14 +45,19 @@ jobs:
       audit: cargo-audit
       controls-only: "fmt-unformatted lock-stale required-sees-failure"
 
+  classify:              # sieve's own classify step, as sieve documents it
+    runs-on: ...
+    outputs: { run_all: ..., build: ... }
+    steps: [...]
+
   build:
-    needs: baseline
-    if: ${{ !cancelled() && (needs.baseline.result != 'success' || needs.baseline.outputs.build != 'false') }}
+    needs: classify
+    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.build != 'false') }}
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
     steps: [...]
 
   required:
-    needs: [baseline, build]
+    needs: [baseline, classify, build]
     if: always()
     uses: pulseengine/jig/.github/workflows/required.yml@<40-hex-sha>
     with:
@@ -63,10 +69,10 @@ jobs:
   change reaches a repo only through that repo's own bump PR.
 - The caller adds `trusted_workflows = ["pulseengine/jig/.github/workflows/*.yml"]`
   to its `plant-guard.toml`.
-- Classes come from the caller's `sieve.toml`, named from the fleet
-  vocabulary: build, unit_test, integration, emulator, coverage, mutation,
-  fuzz, bench, docs (`jig classes --config sieve.toml` checks it). Until
-  `enforce-skips: true` (only behind a merge queue) every class runs.
+- Classification is the caller's: keep sieve's classify step as your own job
+  (any class names; sieve check-workflows verifies the form). The verdict
+  reads its outputs (`classifier-job`, default `classify`) and counts a class
+  as selected unless its output is exactly `false`.
 - A job judged by the caller's own aggregator (for example a Kani gate over a
   matrix) is passed as `delegated: "kani-x86=kani-gate"`; the aggregator must
   be never-skip and list the job in its `needs`.

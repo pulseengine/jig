@@ -35,6 +35,10 @@ on:
         description: "Space-separated job=aggregator pairs judged by a caller aggregator (REQ-015)"
         type: string
         default: ""
+      classifier-job:
+        description: "The caller's sieve classify job; gated jobs read needs.<it>.outputs.<class>"
+        type: string
+        default: classify
       jig-from-source:
         description: "Build jig from the caller's checkout. Only pulseengine/jig itself may set this (phase 0)"
         type: boolean
@@ -103,9 +107,10 @@ jobs:
           NEVER_SKIP: ${{ inputs.never-skip }}
           ADVISORY: ${{ inputs.advisory }}
           DELEGATED: ${{ inputs.delegated }}
+          CLASSIFIER: ${{ inputs.classifier-job }}
         run: |
           printf '%s' "$NEEDS_JSON" > "$RUNNER_TEMP/needs.json"
-          args=(--needs "$RUNNER_TEMP/needs.json" --workflow "$CALLER_WORKFLOW")
+          args=(--needs "$RUNNER_TEMP/needs.json" --workflow "$CALLER_WORKFLOW" --classifier-job "$CLASSIFIER")
           for j in $NEVER_SKIP; do args+=(--never-skip "$j"); done
           for j in $ADVISORY; do args+=(--advisory "$j"); done
           for p in $DELEGATED; do args+=(--delegated "$p"); done

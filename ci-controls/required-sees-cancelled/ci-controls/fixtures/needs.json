@@ -1,3 +1,4 @@
-{"baseline": {"result": "success", "outputs": {"run_all": "false", "build": "false"}},
+{"baseline": {"result": "success", "outputs": {}},
+ "classify": {"result": "success", "outputs": {"run_all": "false", "build": "false"}},
  "build": {"result": "skipped", "outputs": {}},
  "clippy": {"result": "cancelled", "outputs": {}}}

@@ -1,5 +1,6 @@
-# A caller workflow in the shape jig expects (REQ-017). Planted copies of it
-# and of needs.json turn jig verdict / jig caller red.
+# A caller workflow in the shape jig expects (REQ-017), with its own sieve
+# classify job. Planted copies of it and of needs.json turn jig verdict /
+# jig caller red.
 on:
   pull_request:
 permissions:
@@ -7,9 +8,17 @@ permissions:
 jobs:
   baseline:
     uses: pulseengine/jig/.github/workflows/baseline.yml@0123456789abcdef0123456789abcdef01234567
+  classify:
+    runs-on: ubuntu-24.04
+    outputs:
+      run_all: ${{ steps.classify.outputs.run_all }}
+      build: ${{ steps.classify.outputs.build }}
+    steps:
+      - id: classify
+        run: echo "sieve classify would run here"
   build:
-    needs: baseline
-    if: ${{ !cancelled() && (needs.baseline.result != 'success' || needs.baseline.outputs.build != 'false') }}
+    needs: classify
+    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.build != 'false') }}
     runs-on: ubuntu-24.04
     steps:
       - run: echo build
@@ -18,7 +27,7 @@ jobs:
     steps:
       - run: echo clippy
   required:
-    needs: [baseline, build, clippy]
+    needs: [baseline, classify, build, clippy]
     if: always()
     uses: pulseengine/jig/.github/workflows/required.yml@0123456789abcdef0123456789abcdef01234567
     with:

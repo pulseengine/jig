@@ -1,5 +1,8 @@
 # jig baseline: the checks every pulseengine repository needs and no
-# repository should own alone. Called, never triggered directly:
+# repository should own alone: guard, pins, supply and plant controls.
+# Classification is not here: each caller keeps sieve's classify step as its
+# own job, in the form sieve check-workflows verifies, with its own class
+# names (owner decision 2026-11-21). Called, never triggered directly:
 #
 #   baseline:
 #     uses: pulseengine/jig/.github/workflows/baseline.yml@<40-hex-sha>
@@ -39,35 +42,10 @@ on:
         description: "plant guard config; empty means plant's default lookup"
         type: string
         default: ""
-      enforce-skips:
-        description: "false = shadow mode: every class is selected. Set true only behind a merge queue (DD-004)"
-        type: boolean
-        default: false
       jig-from-source:
         description: "Build jig from the caller's checkout. Only pulseengine/jig itself may set this (phase 0)"
         type: boolean
         default: false
-    outputs:
-      run_all:
-        value: ${{ jobs.classify.outputs.run_all }}
-      build:
-        value: ${{ jobs.classify.outputs.build }}
-      unit_test:
-        value: ${{ jobs.classify.outputs.unit_test }}
-      integration:
-        value: ${{ jobs.classify.outputs.integration }}
-      emulator:
-        value: ${{ jobs.classify.outputs.emulator }}
-      coverage:
-        value: ${{ jobs.classify.outputs.coverage }}
-      mutation:
-        value: ${{ jobs.classify.outputs.mutation }}
-      fuzz:
-        value: ${{ jobs.classify.outputs.fuzz }}
-      bench:
-        value: ${{ jobs.classify.outputs.bench }}
-      docs:
-        value: ${{ jobs.classify.outputs.docs }}
 
 permissions:
   contents: read
@@ -88,10 +66,6 @@ env:
   # first release that carries trusted_workflows before any pilot.
   PLANT_VERSION: v0.3.0
   PLANT_SHA256: de3582319ae8476c3dfc74567aef9396b09c91eb28a59cb7cec776d678469bed
-  # sieve v0.2.1 (the version the covalent 2026.11.19 layer composes),
-  # x86_64-unknown-linux-musl, verified the same way on 2026-11-21.
-  SIEVE_VERSION: v0.2.1
-  SIEVE_SHA256: 1856630c196014c1bbfc65be81607ee26fb3de545b00d579b08db1b6b31e92ca
 
 jobs:
   guard:
@@ -259,64 +233,3 @@ jobs:
           plant --version
           plant "$MANIFEST" "${args[@]}"
 
-  classify:
-    name: classify
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
-    timeout-minutes: 15
-    outputs:
-      run_all: ${{ steps.all.outputs.run_all || steps.classify.outputs.run_all }}
-      build: ${{ steps.all.outputs.build || steps.classify.outputs.build }}
-      unit_test: ${{ steps.all.outputs.unit_test || steps.classify.outputs.unit_test }}
-      integration: ${{ steps.all.outputs.integration || steps.classify.outputs.integration }}
-      emulator: ${{ steps.all.outputs.emulator || steps.classify.outputs.emulator }}
-      coverage: ${{ steps.all.outputs.coverage || steps.classify.outputs.coverage }}
-      mutation: ${{ steps.all.outputs.mutation || steps.classify.outputs.mutation }}
-      fuzz: ${{ steps.all.outputs.fuzz || steps.classify.outputs.fuzz }}
-      bench: ${{ steps.all.outputs.bench || steps.classify.outputs.bench }}
-      docs: ${{ steps.all.outputs.docs || steps.classify.outputs.docs }}
-    steps:
-      # Shadow mode or a non-PR event: everything runs, sieve is not asked.
-      # Values are only ever 'true' here; nothing is written as 'false'.
-      - name: select every class
-        id: all
-        if: ${{ !inputs.enforce-skips || github.event_name != 'pull_request' }}
-        run: |
-          {
-            echo "run_all=true"
-            for c in build unit_test integration emulator coverage mutation fuzz bench docs; do echo "$c=true"; done
-          } >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.all.outcome == 'skipped'
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - name: fetch pinned sieve
-        if: steps.all.outcome == 'skipped'
-        run: |
-          d="$RUNNER_TEMP/sieve"; mkdir -p "$d"; cd "$d"
-          a="sieve-$SIEVE_VERSION-x86_64-unknown-linux-musl.tar.gz"
-          curl -fsSL -o "$a" "https://github.com/pulseengine/sieve/releases/download/$SIEVE_VERSION/$a"
-          echo "$SIEVE_SHA256  $a" | sha256sum -c -
-          tar -xzf "$a" ./sieve
-          echo "$d" >> "$GITHUB_PATH"
-      # A refused config (exit 1 or 3) is not a pass: the job fails, and with
-      # it baseline, so every gated job runs and the verdict is red.
-      - name: sieve config is trusted
-        if: steps.all.outcome == 'skipped'
-        run: |
-          sieve --version
-          sieve check-graph --config sieve.toml --control graph-inputs
-      # The config comes from the PR head. A PR that edits sieve.toml (or
-      # anything under .github/) still runs everything: both are on sieve's
-      # built-in run_all list, which an adopter config can extend but never
-      # shrink (sieve src/config.rs, defaults_cannot_be_dropped, since v0.1.0).
-      # sieve's own form, so sieve check-workflows can check this callee at
-      # the pinned SHA (REQ-018). It writes only the adopter's classes plus
-      # run_all; an undefined vocabulary name stays empty and so runs.
-      - name: sieve classify
-        id: classify
-        if: steps.all.outcome == 'skipped'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: sieve classify --config sieve.toml --base "$BASE_SHA" --event "$EVENT_NAME" --format github-output

@@ -12,16 +12,20 @@ relay, temper, varve) and recorded in artifacts/ (REQ-015..020, DD-011..013):
 
 - **No `pool`, `fallback` or `sieve-config` input.** plant guard refuses a
   runner taken from an input, and baseline's jobs are light work, so every
-  job runs on the light pool behind the fail-closed fork guard. sieve's
-  config is `sieve.toml` at the root, so the classify step keeps the exact
-  form sieve check-workflows recognises (REQ-018).
-- **Outputs are `run_all` plus the fixed class vocabulary**, forwarded from
-  sieve unchanged; no `reason` or `classes` (sieve's github-output has
-  neither). A vocabulary name the adopter does not define stays empty, so
-  its jobs run; `jig classes` refuses a class outside the vocabulary
-  (REQ-016, DD-011).
-- **Config refusal is sieve's own** `check-graph --control graph-inputs`
-  (exit 1 or 3 fails the job); jig adds no pre-check (REQ-003).
+  job runs on the light pool behind the fail-closed fork guard.
+- **Classification stays in the caller** (owner, 2026-11-21; REQ-016,
+  DD-011). baseline.yml has no classify job and no outputs. Each caller keeps
+  sieve's classify step as its own job, in the form sieve check-workflows
+  verifies today (REQ-018), with its own class names; the verdict reads the
+  selections from that job (`classifier-job`, default `classify`). A fixed
+  vocabulary was tried first and dropped: gale, the first real adopter,
+  failed it on all six classes. Shadow mode, enforce-skips and the
+  `check-graph --control graph-inputs` refusal therefore live in the
+  caller's classify job, as sieve documents them.
+- **The verdict fails closed on classes** (REQ-003): a class counts as
+  selected unless the classifier's output is exactly 'false', and all
+  classes count as selected when the classifier is absent or did not
+  succeed.
 - **`delegated` input**: a job judged by a caller aggregator (relay's Kani and
   Verus gates keep their reason-gated skips) is not judged by the verdict;
   the aggregator must be never-skip, succeed and list the job in its needs

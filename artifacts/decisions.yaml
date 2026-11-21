@@ -176,20 +176,24 @@ artifacts:
 
   - id: DD-011
     type: design-decision
-    title: A fixed class vocabulary as a naming convention
+    title: Classification stays in the caller
     status: draft
     fields:
       decision: >
-        baseline.yml declares the fleet vocabulary as outputs and forwards
-        sieve's values for those names; adopters name their sieve classes from
-        it. An undefined name stays empty (so the job runs); a class outside
-        the vocabulary is refused at adoption, and at run time fails open.
+        Each caller keeps sieve's classify step as its own job; baseline.yml
+        does not classify, and the verdict reads class selections from that
+        job (owner decision 2026-11-21).
       rationale: >
-        A reusable workflow's outputs are declared statically, while sieve
-        writes only the adopter's own class names (sieve-d1, 2026-11-21). A
-        convention plus refusal keeps the forwarding one-to-one without jig
-        renaming, merging or dropping a class.
-      alternatives: A single JSON classes output read with fromJSON; rejected because sieve check-workflows recognises only needs.<job>.outputs.<class>.
+        A reusable workflow's outputs are static, so classifying inside
+        baseline.yml needed a fixed class vocabulary. gale, the first real
+        adopter, failed it on all six classes (zephyr, zephyr_renode,
+        rust_cov, proofs, gust_renode, cross_arch), most of them per-target
+        lanes that lose selectivity if merged. A caller-side job keeps the
+        adopter's names, and sieve check-workflows already verifies that form
+        today, with no wait for uses: support.
+      alternatives: >
+        Grow the vocabulary (rejected: a jig change for every new kind of
+        lane, and renaming in every adopter).
     links:
       - type: satisfies
         target: REQ-016
