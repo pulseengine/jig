@@ -19,6 +19,8 @@ pub struct Opts {
     pub baseline_job: String,
     pub never_skip: BTreeSet<String>,
     pub advisory: BTreeSet<String>,
+    /// Delegated job -> the caller aggregator that judges it.
+    pub delegated: BTreeMap<String, String>,
 }
 
 impl Default for Opts {
@@ -28,6 +30,7 @@ impl Default for Opts {
             baseline_job: "baseline".into(),
             never_skip: BTreeSet::new(),
             advisory: BTreeSet::new(),
+            delegated: BTreeMap::new(),
         }
     }
 }
@@ -40,6 +43,28 @@ pub fn split_ids(values: &[String]) -> BTreeSet<String> {
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .collect()
+}
+
+/// Parse `job=aggregator` pairs (comma or space separated; repeatable). A
+/// malformed pair, or a job given two different aggregators, is an error.
+pub fn parse_delegated(values: &[String]) -> Result<BTreeMap<String, String>, String> {
+    let mut out = BTreeMap::new();
+    for pair in split_ids(values) {
+        let Some((job, agg)) = pair.split_once('=') else {
+            return Err(format!("--delegated '{pair}' is not <job>=<aggregator>"));
+        };
+        if job.is_empty() || agg.is_empty() || agg.contains('=') {
+            return Err(format!("--delegated '{pair}' is not <job>=<aggregator>"));
+        }
+        if let Some(prev) = out.insert(job.to_string(), agg.to_string())
+            && prev != agg
+        {
+            return Err(format!(
+                "--delegated gives job '{job}' two aggregators ('{prev}' and '{agg}')"
+            ));
+        }
+    }
+    Ok(out)
 }
 
 #[derive(Debug, Clone)]
@@ -86,10 +111,11 @@ pub fn parse_needs(text: &str) -> Result<Needs, String> {
     Ok(out)
 }
 
-/// The jobs of the caller workflow and each job's `if:` text.
+/// The jobs of the caller workflow, each job's `if:` text and `needs:` list.
 #[derive(Debug, Clone)]
 pub struct Workflow {
     pub jobs: BTreeMap<String, Option<String>>,
+    pub needs: BTreeMap<String, Vec<String>>,
 }
 
 pub fn parse_workflow(text: &str) -> Result<Workflow, String> {
@@ -101,6 +127,7 @@ pub fn parse_workflow(text: &str) -> Result<Workflow, String> {
         return Err("workflow has an empty jobs mapping".into());
     }
     let mut jobs = BTreeMap::new();
+    let mut needs = BTreeMap::new();
     for e in entries {
         let Node::Map { .. } = &e.value else {
             return Err(format!("workflow job '{}' is not a mapping", e.key));
@@ -110,9 +137,25 @@ pub fn parse_workflow(text: &str) -> Result<Workflow, String> {
             Some(Node::Scalar { value, .. }) => Some(value.clone()),
             Some(_) => return Err(format!("workflow job '{}' has a non-scalar if:", e.key)),
         };
+        let job_needs = match e.value.get("needs") {
+            None => Vec::new(),
+            Some(Node::Scalar { value, .. }) => vec![value.clone()],
+            Some(Node::Seq { items, .. }) => items
+                .iter()
+                .map(|i| {
+                    i.as_str().map(str::to_string).ok_or_else(|| {
+                        format!("workflow job '{}' has a non-scalar needs: item", e.key)
+                    })
+                })
+                .collect::<Result<_, _>>()?,
+            Some(Node::Map { .. }) => {
+                return Err(format!("workflow job '{}' has a mapping needs:", e.key));
+            }
+        };
         jobs.insert(e.key.clone(), cond);
+        needs.insert(e.key.clone(), job_needs);
     }
-    Ok(Workflow { jobs })
+    Ok(Workflow { jobs, needs })
 }
 
 /// Class names a job's `if:` reads as `needs.<baseline>.outputs.<class>`.
@@ -161,6 +204,13 @@ pub fn judge(needs: &Needs, wf: &Workflow, o: &Opts) -> Vec<String> {
     let run_all = out("run_all") == Some("true");
 
     for (id, j) in needs {
+        if o.delegated.contains_key(id) {
+            // The aggregator judges it; only an unreadable result is red here.
+            if !KNOWN.contains(&j.result.as_str()) {
+                r.push(format!("job '{id}' has unknown result '{}'", j.result));
+            }
+            continue;
+        }
         let advisory = o.advisory.contains(id);
         match j.result.as_str() {
             "success" => {}
@@ -212,7 +262,11 @@ pub fn judge(needs: &Needs, wf: &Workflow, o: &Opts) -> Vec<String> {
     }
 
     for id in wf.jobs.keys() {
-        if *id != o.self_job && !o.advisory.contains(id) && !needs.contains_key(id) {
+        if *id != o.self_job
+            && !o.advisory.contains(id)
+            && !o.delegated.contains_key(id)
+            && !needs.contains_key(id)
+        {
             r.push(format!(
                 "job '{id}' is in the workflow but missing from needs"
             ));
@@ -223,7 +277,61 @@ pub fn judge(needs: &Needs, wf: &Workflow, o: &Opts) -> Vec<String> {
             r.push(format!("needs key '{id}' is not a job in the workflow"));
         }
     }
+    judge_delegated(needs, wf, o, &mut r);
     r
+}
+
+/// The delegation rules (REQ-015): a delegated job is judged by its
+/// aggregator, which must itself be held to a standard the verdict can see.
+fn judge_delegated(needs: &Needs, wf: &Workflow, o: &Opts, r: &mut Vec<String>) {
+    for (job, agg) in &o.delegated {
+        if job == agg {
+            r.push(format!("job '{job}' is delegated to itself"));
+            continue;
+        }
+        if *job == o.baseline_job || *job == o.self_job {
+            r.push(format!(
+                "job '{job}' is the {} job and cannot be delegated",
+                if *job == o.baseline_job {
+                    "baseline"
+                } else {
+                    "required"
+                }
+            ));
+        }
+        if !wf.jobs.contains_key(job) {
+            r.push(format!(
+                "delegated job '{job}' is not a job in the workflow"
+            ));
+        }
+        if o.delegated.contains_key(agg) {
+            r.push(format!("aggregator '{agg}' of '{job}' is itself delegated"));
+        }
+        match needs.get(agg) {
+            None => r.push(format!(
+                "aggregator '{agg}' of delegated job '{job}' is absent from needs"
+            )),
+            Some(a) if a.result != "success" => r.push(format!(
+                "aggregator '{agg}' of delegated job '{job}' result is '{}', not success",
+                a.result
+            )),
+            Some(_) => {}
+        }
+        if !o.never_skip.contains(agg) {
+            r.push(format!(
+                "aggregator '{agg}' of delegated job '{job}' is not in never-skip"
+            ));
+        }
+        match wf.needs.get(agg) {
+            None => r.push(format!(
+                "aggregator '{agg}' of delegated job '{job}' is not a job in the workflow"
+            )),
+            Some(n) if !n.contains(job) => r.push(format!(
+                "aggregator '{agg}' does not list delegated job '{job}' in its needs:"
+            )),
+            Some(_) => {}
+        }
+    }
 }
 
 // ---- self-test (REQ-005) ----
@@ -244,6 +352,8 @@ pub struct Row {
     pub workflow: String,
     pub never_skip: Vec<&'static str>,
     pub advisory: Vec<&'static str>,
+    /// `job=aggregator` pairs, as given to --delegated.
+    pub delegated: Vec<&'static str>,
     pub expect: Expect,
 }
 
@@ -261,6 +371,11 @@ pub fn run_row(row: &Row) -> Outcome {
         advisory: row.advisory.iter().map(|s| s.to_string()).collect(),
         ..Opts::default()
     };
+    let delegated: Vec<String> = row.delegated.iter().map(|s| s.to_string()).collect();
+    let Ok(delegated) = parse_delegated(&delegated) else {
+        return Outcome::CouldNotRun("bad --delegated".to_string());
+    };
+    let opts = Opts { delegated, ..opts };
     let needs = match parse_needs(&row.needs) {
         Ok(n) => n,
         Err(e) => return Outcome::CouldNotRun(e),
@@ -346,6 +461,7 @@ fn row(
         workflow: WORKFLOW.to_string(),
         never_skip: never_skip.to_vec(),
         advisory: advisory.to_vec(),
+        delegated: vec![],
         expect,
     }
 }
@@ -525,6 +641,7 @@ pub fn table() -> Vec<Row> {
         workflow: wf.to_string(),
         never_skip: vec![],
         advisory: vec![],
+        delegated: vec![],
         expect: Expect::CouldNotRun,
     };
     rows.push(bad_wf(
@@ -533,7 +650,186 @@ pub fn table() -> Vec<Row> {
     ));
     rows.push(bad_wf("workflow without jobs", "name: CI\non: push\n"));
     rows.push(bad_wf("workflow that is not YAML", "jobs: [unclosed\n"));
+    rows.extend(delegation_rows());
     rows
+}
+
+/// Caller workflow with a delegated `kani` job covered by the `proofs`
+/// aggregator; `proofs_needs` is the aggregator's own `needs:` line.
+fn workflow_d(proofs_needs: &str) -> String {
+    format!(
+        "\
+name: CI
+on: pull_request
+jobs:
+  baseline:
+    uses: pulseengine/jig/.github/workflows/baseline.yml@0123456789abcdef0123456789abcdef01234567
+  build:
+    needs: baseline
+    if: ${{{{ !cancelled() && (needs.baseline.result != 'success' || needs.baseline.outputs.build != 'false') }}}}
+    runs-on: ubuntu-24.04
+  kani:
+    runs-on: ubuntu-24.04
+  proofs:
+{proofs_needs}    if: always()
+    runs-on: ubuntu-24.04
+  required:
+    needs: [baseline, build, proofs]
+    if: always()
+    runs-on: ubuntu-24.04
+"
+    )
+}
+
+/// Delegation rows (REQ-015).
+fn delegation_rows() -> Vec<Row> {
+    let seq = workflow_d("    needs: [kani]\n");
+    let scalar = workflow_d("    needs: kani\n");
+    let unlisted = workflow_d("");
+    let d =
+        |name, needs: String, wf: &str, never: &[&'static str], del: &[&'static str], expect| Row {
+            name,
+            needs,
+            workflow: wf.to_string(),
+            never_skip: never.to_vec(),
+            advisory: vec![],
+            delegated: del.to_vec(),
+            expect,
+        };
+    let base = [("build", "success"), ("proofs", "success")];
+    let with_kani = |res: &'static str| {
+        let mut v = base.to_vec();
+        v.push(("kani", res));
+        v
+    };
+    let kd = &["kani=proofs"];
+    let np = &["proofs"];
+    vec![
+        d(
+            "delegated job absent from needs, aggregator ok",
+            nj("success", OUTS_NONE, &base),
+            &seq,
+            np,
+            kd,
+            Expect::Green,
+        ),
+        d(
+            "delegated job's failure is not judged",
+            nj("success", OUTS_NONE, &with_kani("failure")),
+            &seq,
+            np,
+            kd,
+            Expect::Green,
+        ),
+        d(
+            "delegated job's skip is not judged",
+            nj("success", OUTS_NONE, &with_kani("skipped")),
+            &scalar,
+            np,
+            kd,
+            Expect::Green,
+        ),
+        d(
+            "delegated job with an unknown result",
+            nj("success", OUTS_NONE, &with_kani("weird")),
+            &seq,
+            np,
+            kd,
+            Expect::Red("job 'kani' has unknown result 'weird'"),
+        ),
+        d(
+            "delegated skipped elsewhere, aggregator does not list it",
+            nj("success", OUTS_NONE, &with_kani("skipped")),
+            &unlisted,
+            np,
+            kd,
+            Expect::Red("does not list delegated job 'kani'"),
+        ),
+        d(
+            "aggregator absent from needs",
+            nj("success", OUTS_NONE, &[("build", "success")]),
+            &seq,
+            np,
+            kd,
+            Expect::Red("aggregator 'proofs' of delegated job 'kani' is absent from needs"),
+        ),
+        d(
+            "aggregator failed",
+            nj(
+                "success",
+                OUTS_NONE,
+                &[("build", "success"), ("proofs", "failure")],
+            ),
+            &seq,
+            np,
+            kd,
+            Expect::Red("aggregator 'proofs' of delegated job 'kani' result is 'failure'"),
+        ),
+        d(
+            "aggregator skipped",
+            nj(
+                "success",
+                OUTS_NONE,
+                &[("build", "success"), ("proofs", "skipped")],
+            ),
+            &seq,
+            np,
+            kd,
+            Expect::Red("result is 'skipped', not success"),
+        ),
+        d(
+            "aggregator not in never-skip",
+            nj("success", OUTS_NONE, &base),
+            &seq,
+            &[],
+            kd,
+            Expect::Red("is not in never-skip"),
+        ),
+        d(
+            "delegated job not in the workflow",
+            nj("success", OUTS_NONE, &base),
+            &seq,
+            np,
+            &["ghost=proofs"],
+            Expect::Red("delegated job 'ghost' is not a job in the workflow"),
+        ),
+        d(
+            "job delegated to itself",
+            nj("success", OUTS_NONE, &with_kani("success")),
+            &seq,
+            &["kani", "proofs"],
+            &["kani=kani"],
+            Expect::Red("job 'kani' is delegated to itself"),
+        ),
+        d(
+            "aggregator is itself delegated",
+            nj("success", OUTS_NONE, &base),
+            &seq,
+            np,
+            &["kani=proofs", "proofs=build"],
+            Expect::Red("aggregator 'proofs' of 'kani' is itself delegated"),
+        ),
+        d(
+            "malformed delegation pair",
+            nj("success", OUTS_NONE, &base),
+            &seq,
+            np,
+            &["kani"],
+            Expect::CouldNotRun,
+        ),
+        d(
+            "non-delegated failure still red beside a delegation",
+            nj(
+                "success",
+                OUTS_NONE,
+                &[("build", "failure"), ("proofs", "success")],
+            ),
+            &seq,
+            np,
+            kd,
+            Expect::Red("job 'build' result is failure"),
+        ),
+    ]
 }
 
 /// Run the built-in table; `Err` carries the 1-based numbers that disagree.

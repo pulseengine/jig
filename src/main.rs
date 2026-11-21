@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::json;
 
-use jig::{docs, pins, verdict};
+use jig::{caller, classes, docs, pins, verdict};
 
 /// Exit codes: 0 check passed, 1 check failed or nothing compared, 2 could not run.
 #[derive(Parser)]
@@ -46,6 +46,9 @@ enum Cmd {
         /// Job ids allowed to fail (space or comma separated; repeatable).
         #[arg(long)]
         advisory: Vec<String>,
+        /// `<job>=<aggregator>` pairs: the aggregator judges the job (space or comma separated; repeatable).
+        #[arg(long)]
+        delegated: Vec<String>,
         /// Run only the built-in decision table.
         #[arg(long)]
         self_test: bool,
@@ -55,6 +58,27 @@ enum Cmd {
         /// Directory to scan.
         #[arg(default_value = ".")]
         dir: PathBuf,
+    },
+    /// Check a sieve.toml against the class vocabulary (see `jig docs classes`).
+    Classes {
+        /// The sieve config to check.
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// Print the vocabulary, one class per line.
+        #[arg(long)]
+        list: bool,
+    },
+    /// Check a caller workflow's shape (see `jig docs caller`).
+    Caller {
+        /// The caller workflow file.
+        #[arg(long)]
+        workflow: PathBuf,
+        /// The required job's id.
+        #[arg(long, default_value = "required")]
+        required_job: String,
+        /// The baseline job's id.
+        #[arg(long, default_value = "baseline")]
+        baseline_job: String,
     },
     /// List or print the embedded docs.
     Docs {
@@ -77,13 +101,19 @@ fn main() -> ExitCode {
             baseline_job,
             never_skip,
             advisory,
+            delegated,
             self_test,
         } => {
+            let delegated = match verdict::parse_delegated(&delegated) {
+                Ok(d) => d,
+                Err(e) => return ExitCode::from(could_not_run(cli.format, &e)),
+            };
             let opts = verdict::Opts {
                 self_job,
                 baseline_job,
                 never_skip: verdict::split_ids(&never_skip),
                 advisory: verdict::split_ids(&advisory),
+                delegated,
             };
             run_verdict(
                 cli.format,
@@ -94,6 +124,19 @@ fn main() -> ExitCode {
             )
         }
         Cmd::Pins { dir } => run_pins(cli.format, &dir),
+        Cmd::Classes { config, list } => run_classes(cli.format, config.as_deref(), list),
+        Cmd::Caller {
+            workflow,
+            required_job,
+            baseline_job,
+        } => run_caller(
+            cli.format,
+            &workflow,
+            &caller::Opts {
+                required_job,
+                baseline_job,
+            },
+        ),
         Cmd::Docs { topic } => run_docs(topic.as_deref()),
     };
     ExitCode::from(code)
@@ -194,6 +237,57 @@ fn report(f: Format, verdict: &str, reasons: &[String]) {
         for r in reasons {
             println!("  {r}");
         }
+    }
+}
+
+fn run_classes(f: Format, config: Option<&Path>, list: bool) -> u8 {
+    if list {
+        for c in classes::VOCABULARY {
+            println!("{c}");
+        }
+        return PASS;
+    }
+    let Some(config) = config else {
+        return could_not_run(f, "--config is required (or use --list)");
+    };
+    let rep = match read(config).and_then(|t| classes::check(&t)) {
+        Ok(r) => r,
+        Err(e) => return could_not_run(f, &e),
+    };
+    let reasons = rep.reasons();
+    let code = if reasons.is_empty() { PASS } else { FAIL };
+    if f == Format::Json {
+        println!(
+            "{}",
+            json!({
+                "verdict": if code == PASS { "green" } else { "red" },
+                "defined": rep.defined,
+                "unknown": rep.unknown,
+                "reasons": reasons,
+            })
+        );
+    } else if code == PASS {
+        println!("classes: {}", rep.defined.join(" "));
+    } else {
+        println!("classes: red");
+        for r in &reasons {
+            println!("  {r}");
+        }
+    }
+    code
+}
+
+fn run_caller(f: Format, workflow: &Path, opts: &caller::Opts) -> u8 {
+    let reasons = match read(workflow).and_then(|t| caller::check(&t, opts)) {
+        Ok(r) => r,
+        Err(e) => return could_not_run(f, &e),
+    };
+    if reasons.is_empty() {
+        report(f, "green", &[]);
+        PASS
+    } else {
+        report(f, "red", &reasons);
+        FAIL
     }
 }
 

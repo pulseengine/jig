@@ -410,3 +410,210 @@ fn a_row_with_a_flipped_expectation_is_caught() {
     rows[n_red].expect = Expect::Red("text that is never a reason");
     assert_eq!(verdict::disagreeing(&rows), vec![n_red + 1]);
 }
+
+// ---- delegation (REQ-015) ----
+
+fn wf_d(proofs_needs: &str) -> String {
+    format!(
+        "\
+on: pull_request
+jobs:
+  baseline:
+    uses: o/r/.github/workflows/b.yml@0123456789abcdef0123456789abcdef01234567
+  build:
+    needs: baseline
+    if: ${{{{ !cancelled() && (needs.baseline.result != 'success' || needs.baseline.outputs.build != 'false') }}}}
+    runs-on: x
+  kani:
+    runs-on: x
+  proofs:
+{proofs_needs}    if: always()
+    runs-on: x
+  required:
+    needs: [baseline, build, proofs]
+    if: always()
+    runs-on: x
+"
+    )
+}
+
+const DEL_OK: [(&str, &str); 2] = [("build", "success"), ("proofs", "success")];
+
+fn del(d: &Dir, rest: &[(&str, &str)], wf: &str, extra: &[&str]) -> Output {
+    run(d, &needs("success", F, rest), wf, extra)
+}
+
+// rivet: verifies REQ-015
+#[test]
+fn a_delegated_job_is_judged_by_its_aggregator_alone() {
+    let d = dir("del-green");
+    let wf = wf_d("    needs: [kani]\n");
+    let args = ["--never-skip", "proofs", "--delegated", "kani=proofs"];
+    // Absent, failed, skipped and cancelled delegated results are not judged.
+    assert_eq!(code(&del(&d, &DEL_OK, &wf, &args)), 0);
+    for res in ["failure", "skipped", "cancelled", "success"] {
+        let mut rest = DEL_OK.to_vec();
+        rest.push(("kani", res));
+        let o = del(&d, &rest, &wf, &args);
+        assert_eq!(code(&o), 0, "{res}: {}", stdout(&o));
+    }
+    // An unknown result string is still red.
+    let mut rest = DEL_OK.to_vec();
+    rest.push(("kani", "weird"));
+    let o = del(&d, &rest, &wf, &args);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("unknown result 'weird'"));
+    // Without the flag the job is missing from needs.
+    let o = del(&d, &DEL_OK, &wf, &["--never-skip", "proofs"]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("job 'kani' is in the workflow but missing from needs"));
+}
+
+// rivet: verifies REQ-015
+#[test]
+fn pairs_may_be_repeated_comma_or_space_separated() {
+    let d = dir("del-forms");
+    let wf = wf_d("    needs: kani\n");
+    for args in [
+        &["--never-skip", "proofs", "--delegated", "kani=proofs"][..],
+        &["--never-skip=proofs", "--delegated=kani=proofs,kani=proofs"][..],
+        &[
+            "--never-skip",
+            "proofs",
+            "--delegated",
+            "kani=proofs kani=proofs",
+        ][..],
+        &[
+            "--never-skip",
+            "proofs",
+            "--delegated",
+            "kani=proofs",
+            "--delegated",
+            "kani=proofs",
+        ][..],
+    ] {
+        let o = del(&d, &DEL_OK, &wf, args);
+        assert_eq!(code(&o), 0, "{args:?}: {}", stdout(&o));
+    }
+}
+
+// rivet: verifies REQ-015
+#[test]
+fn an_aggregator_that_does_not_list_the_delegated_job_is_red() {
+    let d = dir("del-unlisted");
+    // The delegated job was skipped by something other than sieve, the
+    // aggregator succeeded without it: red.
+    let wf = wf_d("");
+    let mut rest = DEL_OK.to_vec();
+    rest.push(("kani", "skipped"));
+    let o = del(
+        &d,
+        &rest,
+        &wf,
+        &["--never-skip", "proofs", "--delegated", "kani=proofs"],
+    );
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("does not list delegated job 'kani'"));
+}
+
+// rivet: verifies REQ-015
+#[test]
+fn aggregator_must_be_present_successful_and_never_skip() {
+    let d = dir("del-agg");
+    let wf = wf_d("    needs: [kani]\n");
+    let args = ["--never-skip", "proofs", "--delegated", "kani=proofs"];
+    let o = del(&d, &[("build", "success")], &wf, &args);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("is absent from needs"));
+    for res in ["failure", "skipped", "cancelled"] {
+        let o = del(&d, &[("build", "success"), ("proofs", res)], &wf, &args);
+        assert_eq!(code(&o), 1, "{res}");
+        assert!(stdout(&o).contains("not success"), "{res}: {}", stdout(&o));
+    }
+    let o = del(&d, &DEL_OK, &wf, &["--delegated", "kani=proofs"]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("is not in never-skip"));
+}
+
+// rivet: verifies REQ-015
+#[test]
+fn delegation_to_self_unknown_jobs_and_chains_are_red() {
+    let d = dir("del-shape");
+    let wf = wf_d("    needs: [kani]\n");
+    let o = del(
+        &d,
+        &DEL_OK,
+        &wf,
+        &["--never-skip", "kani proofs", "--delegated", "kani=kani"],
+    );
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("delegated to itself"));
+    let o = del(
+        &d,
+        &DEL_OK,
+        &wf,
+        &["--never-skip", "proofs", "--delegated", "ghost=proofs"],
+    );
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("'ghost' is not a job in the workflow"));
+    let o = del(
+        &d,
+        &DEL_OK,
+        &wf,
+        &[
+            "--never-skip",
+            "proofs",
+            "--delegated",
+            "kani=proofs,proofs=build",
+        ],
+    );
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("is itself delegated"));
+    let o = del(
+        &d,
+        &DEL_OK,
+        &wf,
+        &["--never-skip", "proofs", "--delegated", "baseline=proofs"],
+    );
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("cannot be delegated"));
+}
+
+// rivet: verifies REQ-015
+#[test]
+fn a_malformed_delegation_is_exit_2() {
+    let d = dir("del-bad");
+    let wf = wf_d("    needs: [kani]\n");
+    for bad in [
+        "kani",
+        "kani=",
+        "=proofs",
+        "kani=a=b",
+        "kani=proofs,kani=build",
+    ] {
+        let o = del(
+            &d,
+            &DEL_OK,
+            &wf,
+            &["--never-skip", "proofs", "--delegated", bad],
+        );
+        assert_eq!(code(&o), 2, "{bad}");
+    }
+}
+
+// rivet: verifies REQ-015
+#[test]
+fn self_test_covers_delegation() {
+    let rows = verdict::table();
+    for want in [
+        "delegated skipped elsewhere, aggregator does not list it",
+        "aggregator absent from needs",
+        "aggregator failed",
+        "aggregator not in never-skip",
+        "job delegated to itself",
+        "aggregator is itself delegated",
+    ] {
+        assert!(rows.iter().any(|r| r.name == want), "no row named {want}");
+    }
+    assert_eq!(verdict::disagreeing(&rows), Vec::<usize>::new());
+}
