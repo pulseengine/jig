@@ -69,7 +69,9 @@ env:
   # Stopgap until a plant release carries plant#33 (owner, 2026-11-21): when
   # set, guard builds plant with cargo install --locked at this pulseengine/plant
   # commit instead of using the release above.
-  PLANT_REV: ""
+  # b3eaf6b: plant main after plant#34 (trusted_workflows), merged 2026-11-21;
+  # guard built from it passes jig's workflows and a trusted-workflow caller.
+  PLANT_REV: b3eaf6bf90cc1ddc981a71b78dfe81253a955425
 
 jobs:
   guard:
@@ -88,7 +90,7 @@ jobs:
         run: |
           if [ -n "$PLANT_REV" ]; then
             [[ "$PLANT_REV" =~ ^[0-9a-f]{40}$ ]] || { echo "PLANT_REV must be a 40-hex commit"; exit 1; }
-            cargo install --locked --git https://github.com/pulseengine/plant --rev "$PLANT_REV" --root "$RUNNER_TEMP/plant-src"
+            cargo install --locked --git https://github.com/pulseengine/plant --rev "$PLANT_REV" --root "$RUNNER_TEMP/plant-src" plant
             echo "$RUNNER_TEMP/plant-src/bin" >> "$GITHUB_PATH"
             exit 0
           fi
