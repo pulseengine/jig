@@ -53,3 +53,17 @@ check = "pins: always-green stand-in"
 run = '"$JIG" pins --help'
 plant = "ci-controls/pins-tag-ref"
 stderr_or_stdout_matches = '.'
+
+[[control]]
+id = "stand-in-pins-canary-needed"
+check = "pins: always-green stand-in"
+run = '"$JIG" pins --help'
+plant = "ci-controls/pins-canary-needed"
+stderr_or_stdout_matches = '.'
+
+[[control]]
+id = "stand-in-required-canary-not-advisory"
+check = "aggregator: always-green stand-in"
+run = '"$JIG" verdict --self-test'
+plant = "ci-controls/required-canary-not-advisory"
+stderr_or_stdout_matches = '.'

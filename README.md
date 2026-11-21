@@ -73,6 +73,12 @@ jobs:
   (any class names; sieve check-workflows verifies the form). The verdict
   reads its outputs (`classifier-job`, default `classify`) and counts a class
   as selected unless its output is exactly `false`.
+- Rust toolchains are exact versions. The one exception is an advisory
+  canary on `toolchain: stable`: a job with `continue-on-error: true` that no
+  other job needs (except the job calling jig's required.yml), listed in
+  `advisory`. `jig pins` prints it as an advisory
+  canary, and the verdict refuses any continue-on-error job outside
+  `advisory`.
 - A job judged by the caller's own aggregator (for example a Kani gate over a
   matrix) is passed as `delegated: "kani-x86=kani-gate"`; the aggregator must
   be never-skip and list the job in its `needs`.

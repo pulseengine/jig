@@ -578,3 +578,121 @@ fn a_toolchain_must_be_a_literal_version_not_an_expression() {
     assert_red(&tc("${{ matrix.rust }}"), "not a version");
     assert_green(&tc("1.92.0"));
 }
+
+/// A workflow with a `build` job and a `canary` job on `toolchain: {tc}`;
+/// `canary_extra` goes under the canary job, `build_needs` under build.
+fn canary_wf(tc: &str, canary_extra: &str, build_needs: &str) -> String {
+    format!(
+        "on: push\njobs:\n  build:\n    runs-on: x\n{build_needs}    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: 1.100.0\n  canary:\n    runs-on: x\n{canary_extra}    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: {tc}\n"
+    )
+}
+
+// rivet: verifies REQ-021
+#[test]
+fn an_advisory_canary_on_stable_is_accepted_and_reported() {
+    let w = canary_wf("stable", "    continue-on-error: true\n", "");
+    let r = check_text("w.yml", &w);
+    assert!(r.violations.is_empty(), "{:?}", r.violations);
+    assert_eq!(r.canaries, vec!["canary".to_string()]);
+    let d = dir("canary-ok");
+    put(&d, ".github/workflows/ci.yml", &w);
+    let o = pins(&d.0, &[]);
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert_eq!(code(&o), 0, "{out}");
+    assert!(
+        out.contains("advisory canary: .github/workflows/ci.yml job 'canary'"),
+        "{out}"
+    );
+}
+
+// rivet: verifies REQ-021
+#[test]
+fn stable_without_continue_on_error_is_red() {
+    assert_red(&canary_wf("stable", "", ""), "is not a version");
+    assert_red(
+        &canary_wf("stable", "    continue-on-error: false\n", ""),
+        "is not a version",
+    );
+    assert_red(
+        &canary_wf("stable", "    continue-on-error: ${{ matrix.x }}\n", ""),
+        "is not a version",
+    );
+}
+
+// rivet: verifies REQ-021
+#[test]
+fn a_canary_that_another_job_needs_is_red() {
+    let w = canary_wf(
+        "stable",
+        "    continue-on-error: true\n",
+        "    needs: canary\n",
+    );
+    assert_red(&w, "is not a version");
+    let w = canary_wf(
+        "stable",
+        "    continue-on-error: true\n",
+        "    needs: [canary]\n",
+    );
+    assert_red(&w, "is not a version");
+}
+
+// rivet: verifies REQ-021
+#[test]
+fn only_stable_qualifies_as_a_canary_toolchain() {
+    for tc in ["beta", "nightly", "${{ matrix.tc }}"] {
+        assert_red(
+            &canary_wf(tc, "    continue-on-error: true\n", ""),
+            "is not a version",
+        );
+    }
+}
+
+// rivet: verifies REQ-021
+#[test]
+fn step_level_continue_on_error_does_not_make_a_canary() {
+    let w = format!(
+        "on: push\njobs:\n  canary:\n    runs-on: x\n    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        continue-on-error: true\n        with:\n          toolchain: stable\n"
+    );
+    assert_red(&w, "is not a version");
+}
+
+// rivet: verifies REQ-021
+#[test]
+fn a_composite_action_has_no_canary() {
+    let a = format!(
+        "name: a\nruns:\n  using: composite\n  steps:\n    - uses: dtolnay/rust-toolchain@{SHA}\n      continue-on-error: true\n      with:\n        toolchain: stable\n"
+    );
+    assert_red(&a, "is not a version");
+}
+
+// rivet: verifies REQ-021
+#[test]
+fn only_the_job_calling_jigs_required_may_need_a_canary() {
+    let canary = format!(
+        "  canary:\n    runs-on: x\n    continue-on-error: true\n    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: stable\n"
+    );
+    let with_needer = |needer: &str| format!("on: push\njobs:\n{canary}{needer}");
+    // The verdict job reads results only, and REQ-017 makes it need every job.
+    for u in [
+        format!("pulseengine/jig/.github/workflows/required.yml@{SHA}"),
+        "./.github/workflows/required.yml".to_string(),
+    ] {
+        let w = with_needer(&format!(
+            "  required:\n    needs: [canary]\n    if: always()\n    uses: {u}\n"
+        ));
+        let r = check_text("w.yml", &w);
+        assert!(r.violations.is_empty(), "{u}: {:?}", r.violations);
+        assert_eq!(r.canaries, vec!["canary".to_string()]);
+    }
+    // Any other reusable workflow, or a look-alike path, still counts.
+    for u in [
+        format!("pulseengine/jig/.github/workflows/baseline.yml@{SHA}"),
+        format!("other/jig/.github/workflows/required.yml@{SHA}"),
+        format!("pulseengine/jig/.github/workflows/required.yml.evil@{SHA}"),
+    ] {
+        let w = with_needer(&format!(
+            "  required:\n    needs: [canary]\n    uses: {u}\n"
+        ));
+        assert_red(&w, "is not a version");
+    }
+}

@@ -23,6 +23,13 @@ plant = "ci-controls/pins-floating-toolchain"
 stderr_or_stdout_matches = 'toolchain .stable. is not a version'
 
 [[control]]
+id = "pins-canary-needed"
+check = "pins: baseline / pins"
+run = '"$JIG" pins .'
+plant = "ci-controls/pins-canary-needed"
+stderr_or_stdout_matches = 'toolchain .stable. is not a version'
+
+[[control]]
 id = "required-sees-failure"
 check = "aggregator: required / verdict"
 run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-controls/fixtures/caller.yml --never-skip clippy'
@@ -98,3 +105,10 @@ check = "lint: actionlint"
 run = 'actionlint -no-color .github/workflows/*.yml'
 plant = "ci-controls/lint-actionlint"
 stderr_or_stdout_matches = 'zz-planted\.yml'
+
+[[control]]
+id = "required-canary-not-advisory"
+check = "aggregator: required / verdict"
+run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-controls/fixtures/caller.yml --never-skip clippy'
+plant = "ci-controls/required-canary-not-advisory"
+stderr_or_stdout_matches = 'job .clippy. has continue-on-error'

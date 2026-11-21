@@ -78,7 +78,7 @@ Jobs:
 |---|---|
 | guard | `plant guard` (pinned binary) against the caller's workflows |
 | supply | for every `git ls-files '*Cargo.lock'` named exactly `Cargo.lock`: `cargo metadata --locked`, then audit each lock; with `bazel`, every invocation and `.bazelrc` carry `--lockfile_mode=error` |
-| pins | every `uses:` is a 40-hex SHA (local `./` excepted); dtolnay `toolchain:` is a version; no `cargo +nightly` without a date; no `pip install` without hashes |
+| pins | every `uses:` is a 40-hex SHA (local `./` excepted); dtolnay `toolchain:` is a version (or `stable` in an advisory canary job: `continue-on-error: true`, needed by no job but the verdict job, listed in the verdict's `advisory`); no `cargo +nightly` without a date; no `pip install` without hashes |
 | controls | `plant --only <controls-only>`, same-repo runners only |
 | classify (superseded: lives in the caller) | refuse a `sieve.toml` whose globs or paths match nothing at HEAD (extend `sieve check-graph`), then `sieve classify --format github-output`. Shadow mode, a refused config or any failure means every class is true |
 

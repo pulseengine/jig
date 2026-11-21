@@ -279,6 +279,9 @@ fn run_pins(f: Format, dir: &Path) -> u8 {
                 "uses": rep.uses,
                 "compared_nothing": nothing,
                 "violations": rep.violations,
+                "advisory_canaries": rep.canaries.iter()
+                    .map(|(f, j)| json!({"file": f, "job": j}))
+                    .collect::<Vec<_>>(),
             })
         );
     } else if nothing {
@@ -289,6 +292,11 @@ fn run_pins(f: Format, dir: &Path) -> u8 {
     } else {
         for v in &rep.violations {
             println!("{}", v.render());
+        }
+        for (f, j) in &rep.canaries {
+            println!(
+                "advisory canary: {f} job '{j}' (toolchain stable, continue-on-error: true; list it in the verdict's advisory)"
+            );
         }
         println!(
             "pins: {} files, {} uses checked, {} violations",

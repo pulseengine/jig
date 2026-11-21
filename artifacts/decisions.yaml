@@ -256,3 +256,27 @@ artifacts:
         target: REQ-017
       - type: satisfies
         target: REQ-018
+
+  - id: DD-015
+    type: design-decision
+    title: The canary marker is continue-on-error, checked by pins and verdict
+    status: draft
+    fields:
+      decision: >
+        A job-level continue-on-error true, on a job nothing but the verdict
+        job needs, is the
+        only way a stable toolchain passes pins, and pins names the job. The
+        verdict refuses any continue-on-error job outside its advisory list.
+      rationale: >
+        continue-on-error already makes a job's result read success, so it
+        is the job that can never gate. Requiring it ties the exemption to a
+        GitHub-visible property instead of a comment, keeps what the canary
+        builds from flowing into other jobs (the verdict job only reads
+        results, and REQ-017 makes it need every job), and the verdict check stops the
+        job from silently counting as a passed required check. Hiding the
+        canary in an unscanned file was rejected as a blind spot.
+    links:
+      - type: satisfies
+        target: REQ-021
+      - type: satisfies
+        target: REQ-017

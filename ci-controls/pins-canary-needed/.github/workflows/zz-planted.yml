@@ -1,0 +1,14 @@
+on: push
+jobs:
+  canary:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca
+        with:
+          toolchain: stable
+  publish:
+    needs: canary
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo publish

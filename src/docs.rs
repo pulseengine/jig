@@ -23,7 +23,9 @@ Red (exit 1), one reason line each, if:
     class can be read from its if:;
   - the classifier job is in needs but skipped, failed or cancelled;
   - a workflow job (except the self job and advisory jobs) is missing from
-    needs, or a needs key is not a workflow job.
+    needs, or a needs key is not a workflow job;
+  - a job with continue-on-error (anything but a literal false) is not in
+    --advisory: its result reads success even when it fails (REQ-021).
 
 Classes: each caller keeps its own classify job (any id, default `classify`,
 --classifier-job) whose outputs are the adopter's own sieve class names plus
@@ -62,7 +64,12 @@ Scans DIR/.github/workflows/*.yml|yaml and every action.yml|yaml below DIR
     owner/repo[/path]@<40 lowercase hex> (tags, branches, short or uppercase
     SHAs and ${{ }} expressions are refused);
   - dtolnay/rust-toolchain without with.toolchain of the form N.N[.N] or
-    nightly-YYYY-MM-DD (stable, beta, nightly are refused);
+    nightly-YYYY-MM-DD (stable, beta, nightly are refused), except
+    toolchain: stable in an advisory canary: a job with continue-on-error:
+    true (literally) that no other job needs, except the job calling
+    jig's required.yml. Each canary is printed as
+    'advisory canary: <file> job <id>' and must be in the verdict's
+    --advisory (REQ-021);
   - a run: with `cargo +nightly` not followed directly by -YYYY-MM-DD;
   - a run: with pip install / pip3 install / python -m pip install lacking
     --require-hashes;
@@ -74,6 +81,8 @@ Findings are file:line. No file found is exit 1 (nothing was compared).
 Blind to: the run: checks read shell text, not a parsed shell. Indirection
 (`p=pip; $p install`, eval, a script file the step calls) is not seen.
 When in doubt they fail closed (unbalanced quotes, option values).
+An advisory canary's own steps are not limited: one that publishes, or
+whose upload another workflow consumes, is not seen; review canary jobs.
 
 Exit: 0 passed, 1 failed or nothing compared, 2 could not run.
 ";
