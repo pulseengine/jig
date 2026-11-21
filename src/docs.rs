@@ -42,8 +42,14 @@ Scans DIR/.github/workflows/*.yml|yaml and every action.yml|yaml below DIR
   - a run: with `cargo +nightly` not followed directly by -YYYY-MM-DD;
   - a run: with pip install / pip3 install / python -m pip install lacking
     --require-hashes;
+  - a local uses: ./path naming no file the scan read (missing, symlinked,
+    in the skipped root target/, or outside the repository);
   - a file that does not parse or uses a YAML merge key.
 Findings are file:line. No file found is exit 1 (nothing was compared).
+
+Blind to: the run: checks read shell text, not a parsed shell. Indirection
+(`p=pip; $p install`, eval, a script file the step calls) is not seen.
+When in doubt they fail closed (unbalanced quotes, option values).
 
 Exit: 0 passed, 1 failed or nothing compared, 2 could not run.
 ";
