@@ -550,30 +550,6 @@ fn the_repo_root_action_is_a_local_use() {
 
 // rivet: verifies REQ-008
 #[test]
-fn a_toolchain_from_a_literal_env_version_is_pinned() {
-    let tc = |env: &str, val: &str| {
-        format!(
-            "on: push\n{env}jobs:\n  b:\n    runs-on: x\n    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: {val}\n"
-        )
-    };
-    assert_green(&tc(
-        "env:\n  RUST_VERSION: 1.92.0\n",
-        "${{ env.RUST_VERSION }}",
-    ));
-    assert_red(
-        &tc("env:\n  RUST_VERSION: stable\n", "${{ env.RUST_VERSION }}"),
-        "not a version",
-    );
-    assert_red(&tc("", "${{ env.RUST_VERSION }}"), "not a version");
-    // Two definitions, one floating: red.
-    let two = format!(
-        "on: push\nenv:\n  V: 1.92.0\njobs:\n  b:\n    runs-on: x\n    env:\n      V: stable\n    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: ${{{{ env.V }}}}\n"
-    );
-    assert_red(&two, "not a version");
-}
-
-// rivet: verifies REQ-008
-#[test]
 fn a_rust_toolchain_file_does_not_excuse_a_floating_toolchain() {
     let w = format!(
         "on: push\njobs:\n  b:\n    runs-on: x\n    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: stable\n"
@@ -590,31 +566,15 @@ fn a_rust_toolchain_file_does_not_excuse_a_floating_toolchain() {
 
 // rivet: verifies REQ-008
 #[test]
-fn env_toolchain_resolution_fails_closed() {
-    let tc = |env: &str, extra: &str| {
+fn a_toolchain_must_be_a_literal_version_not_an_expression() {
+    // Any earlier step can export a variable (core.exportVariable, GITHUB_ENV),
+    // so an env reference is never resolved statically.
+    let tc = |val: &str| {
         format!(
-            "on: push\n{env}jobs:\n  b:\n    runs-on: x\n    steps:\n{extra}      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: ${{{{ env.RUST_VERSION }}}}\n"
+            "on: push\nenv:\n  RUST_VERSION: 1.92.0\njobs:\n  b:\n    runs-on: x\n    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: {val}\n"
         )
     };
-    // A run: that writes $GITHUB_ENV can set the variable at run time.
-    assert_red(
-        &tc(
-            "env:\n  RUST_VERSION: 1.92.0\n",
-            "      - run: echo RUST_VERSION=stable >> \"$GITHUB_ENV\"\n",
-        ),
-        "not a version",
-    );
-    // An env: that is an expression may define anything.
-    assert_red(
-        &format!(
-            "on: push\nenv:\n  RUST_VERSION: 1.92.0\njobs:\n  b:\n    runs-on: x\n    env: ${{{{ fromJSON(inputs.e) }}}}\n    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: ${{{{ env.RUST_VERSION }}}}\n"
-        ),
-        "not a version",
-    );
-    // Names match case-insensitively, so a floating lower-case twin counts.
-    assert_red(
-        &tc("env:\n  RUST_VERSION: 1.92.0\n  rust_version: stable\n", ""),
-        "not a version",
-    );
-    assert_green(&tc("env:\n  RUST_VERSION: 1.92.0\n", ""));
+    assert_red(&tc("${{ env.RUST_VERSION }}"), "not a version");
+    assert_red(&tc("${{ matrix.rust }}"), "not a version");
+    assert_green(&tc("1.92.0"));
 }

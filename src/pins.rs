@@ -4,7 +4,7 @@
 //! line regex over the file. A file that does not parse, or uses a merge key,
 //! is a violation, and a scan that finds no file compared nothing.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -249,11 +249,6 @@ fn unhashed_pip(run: &str) -> Vec<usize> {
 struct Walker<'a> {
     file: &'a str,
     report: Report,
-    /// Every literal value each `env:` key is given anywhere in the document.
-    env: BTreeMap<String, Vec<String>>,
-    /// Some env: is an expression or some run: writes $GITHUB_ENV, so no
-    /// env reference can be resolved statically.
-    env_dynamic: bool,
 }
 
 impl Walker<'_> {
@@ -334,27 +329,6 @@ impl Walker<'_> {
         }
     }
 
-    /// A version, or `${{ env.NAME }}` whose every literal definition is one.
-    fn pinned_toolchain(&self, value: &str) -> bool {
-        if is_toolchain_version(value) {
-            return true;
-        }
-        let inner = value
-            .strip_prefix("${{")
-            .and_then(|v| v.strip_suffix("}}"))
-            .map(str::trim);
-        match inner.and_then(|v| v.strip_prefix("env.")) {
-            Some(_) if self.env_dynamic => false,
-            Some(name) => self
-                .env
-                .get(&name.to_ascii_lowercase())
-                .is_some_and(|defs| {
-                    !defs.is_empty() && defs.iter().all(|d| is_toolchain_version(d))
-                }),
-            None => false,
-        }
-    }
-
     fn toolchain(&mut self, step: &Node, uses_line: usize, path: &str) {
         match step.get("with").and_then(|w| w.get("toolchain")) {
             None => self.add(
@@ -364,7 +338,7 @@ impl Walker<'_> {
                     .into(),
             ),
             Some(Node::Scalar { value, line }) => {
-                if !self.pinned_toolchain(value) {
+                if !is_toolchain_version(value) {
                     self.add(
                         *line,
                         path,
@@ -391,13 +365,9 @@ pub fn check_text(file: &str, text: &str) -> Report {
             }],
         },
         Ok(root) => {
-            let mut env = BTreeMap::new();
-            let env_dynamic = env_defs(&root, &mut env);
             let mut w = Walker {
                 file,
                 report: Report::default(),
-                env,
-                env_dynamic,
             };
             w.walk(&root, "");
             w.report
@@ -526,43 +496,4 @@ fn unscanned_local(value: &str, scanned: &BTreeSet<String>) -> Option<String> {
             "local '{value}' names no file this scan read (missing, symlinked, or in a skipped directory), so it was not checked"
         ))
     }
-}
-
-/// Collect every `env:` mapping's scalar values, by lower-cased key, anywhere
-/// in the tree. Returns true when an env reference cannot be resolved
-/// statically: some `env:` is not a mapping (an expression), or some `run:`
-/// mentions GITHUB_ENV and so may set a variable at run time.
-fn env_defs(node: &Node, out: &mut BTreeMap<String, Vec<String>>) -> bool {
-    let mut dynamic = false;
-    match node {
-        Node::Scalar { .. } => {}
-        Node::Seq { items, .. } => {
-            for n in items {
-                dynamic |= env_defs(n, out);
-            }
-        }
-        Node::Map { entries, .. } => {
-            for e in entries {
-                match (e.key.as_str(), &e.value) {
-                    ("env", Node::Map { entries: vars, .. }) => {
-                        for v in vars {
-                            let val = match &v.value {
-                                Node::Scalar { value, .. } => value.clone(),
-                                // A non-scalar definition is never a version.
-                                _ => String::new(),
-                            };
-                            out.entry(v.key.to_ascii_lowercase()).or_default().push(val);
-                        }
-                    }
-                    ("env", _) => dynamic = true,
-                    ("run", Node::Scalar { value, .. }) if value.contains("GITHUB_ENV") => {
-                        dynamic = true
-                    }
-                    _ => {}
-                }
-                dynamic |= env_defs(&e.value, out);
-            }
-        }
-    }
-    dynamic
 }
