@@ -1,0 +1,100 @@
+# rivet: verifies REQ-004
+# jig's own planted controls (REQ-004). Each plants one bad input and needs
+# the named check to go red; the unplanted baseline must stay green. `check`
+# carries the class as "<class>: <job name>" (plant treats it as opaque).
+#
+# Run from the repository root with JIG set to a built jig binary, and
+# rivet and actionlint on PATH:
+#   JIG=$PWD/target/release/jig plant ci-controls.toml
+# The stand-ins in ci-controls.stand-in.toml must all report FAIL-OPEN.
+
+[[control]]
+id = "pins-tag-ref"
+check = "pins: baseline / pins"
+run = '"$JIG" pins .'
+plant = "ci-controls/pins-tag-ref"
+stderr_or_stdout_matches = 'actions/checkout@v4. is not pinned'
+
+[[control]]
+id = "pins-floating-toolchain"
+check = "pins: baseline / pins"
+run = '"$JIG" pins .'
+plant = "ci-controls/pins-floating-toolchain"
+stderr_or_stdout_matches = 'toolchain .stable. is not a version'
+
+[[control]]
+id = "required-sees-failure"
+check = "aggregator: required / verdict"
+run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-controls/fixtures/caller.yml --never-skip clippy'
+plant = "ci-controls/required-sees-failure"
+stderr_or_stdout_matches = 'job .clippy. result is failure'
+
+[[control]]
+id = "required-sees-cancelled"
+check = "aggregator: required / verdict"
+run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-controls/fixtures/caller.yml --never-skip clippy'
+plant = "ci-controls/required-sees-cancelled"
+stderr_or_stdout_matches = 'job .clippy. result is cancelled'
+
+[[control]]
+id = "required-sees-empty"
+check = "aggregator: required / verdict"
+run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-controls/fixtures/caller.yml --never-skip clippy'
+plant = "ci-controls/required-sees-empty"
+stderr_or_stdout_matches = 'needs is empty'
+
+[[control]]
+id = "required-sees-selected-skip"
+check = "aggregator: required / verdict"
+run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-controls/fixtures/caller.yml --never-skip clippy'
+plant = "ci-controls/required-sees-selected-skip"
+stderr_or_stdout_matches = 'class .build. was selected'
+
+[[control]]
+id = "required-sees-never-skip-skip"
+check = "aggregator: required / verdict"
+run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-controls/fixtures/caller.yml --never-skip clippy'
+plant = "ci-controls/required-sees-never-skip-skip"
+stderr_or_stdout_matches = 'clippy. was skipped but is never-skip'
+
+[[control]]
+id = "required-sees-missing-job"
+check = "aggregator: required / verdict"
+run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-controls/fixtures/caller.yml --never-skip clippy'
+plant = "ci-controls/required-sees-missing-job"
+stderr_or_stdout_matches = 'job .test. is in the workflow but missing from needs'
+
+[[control]]
+id = "caller-paths-filter"
+check = "aggregator: required / verdict"
+run = '"$JIG" caller --workflow ci-controls/fixtures/caller.yml'
+plant = "ci-controls/caller-paths-filter"
+stderr_or_stdout_matches = 'paths'
+
+[[control]]
+id = "caller-no-merge-group"
+check = "aggregator: required / verdict"
+run = '"$JIG" caller --workflow ci-controls/fixtures/caller.yml'
+plant = "ci-controls/caller-no-merge-group"
+stderr_or_stdout_matches = 'lacks merge_group'
+
+[[control]]
+id = "supply-lock-stale"
+check = "supply: baseline / supply"
+run = 'cargo metadata --locked --format-version 1 > /dev/null'
+plant = "ci-controls/supply-lock-stale"
+stderr_or_stdout_matches = '--locked'
+
+[[control]]
+id = "rivet-broken-link"
+check = "rivet: rivet validate"
+run = 'rivet validate'
+plant = "ci-controls/rivet-broken-link"
+stderr_or_stdout_matches = 'SC-DOES-NOT-EXIST. which does not exist'
+
+[[control]]
+id = "lint-actionlint"
+check = "lint: actionlint"
+run = 'actionlint -no-color .github/workflows/*.yml'
+plant = "ci-controls/lint-actionlint"
+stderr_or_stdout_matches = 'zz-planted\.yml'

@@ -1,0 +1,320 @@
+# Top-level requirements (draft, 2026-11-21), derived from docs/design.md.
+# Each links to the constraint(s) it satisfies. None is implemented yet.
+artifacts:
+  - id: REQ-001
+    type: requirement
+    title: Verdict rules
+    status: draft
+    description: >
+      required / verdict shall be red if needs is empty, if any needed job
+      failed or was cancelled, if baseline did not succeed, or if a skipped
+      job's class was selected by sieve or the job is never-skip.
+    release: v0.1.0
+    fields: {priority: must, category: functional}
+    links:
+      - type: constraint-satisfies
+        target: SC-1
+      - type: constraint-satisfies
+        target: CC-1
+      - type: constraint-satisfies
+        target: CC-3
+
+  - id: REQ-002
+    type: requirement
+    title: Needs completeness
+    status: draft
+    description: >
+      The verdict shall parse the caller workflow and fail when any job other
+      than required and the declared advisory jobs is missing from needs.
+    release: v0.1.0
+    fields: {priority: must, category: functional}
+    links:
+      - type: constraint-satisfies
+        target: SC-2
+      - type: constraint-satisfies
+        target: CC-2
+
+  - id: REQ-003
+    type: requirement
+    title: Classification fails closed
+    status: draft
+    description: >
+      The caller's classify job runs sieve, which selects every class on
+      non-PR events and on any failure, and refuses a config whose inputs
+      match nothing (sieve check-graph). The verdict shall count a class as
+      selected unless the classifier job's output for it is exactly 'false',
+      and every class as selected when the classifier job is absent, failed,
+      was cancelled or skipped, or run_all is 'true'. jig never post-filters
+      sieve's verdict.
+    release: v0.1.0
+    fields: {priority: must, category: functional}
+    links:
+      - type: constraint-satisfies
+        target: SC-3
+      - type: constraint-satisfies
+        target: CC-5
+
+  - id: REQ-004
+    type: requirement
+    title: A planted control per check
+    status: draft
+    description: >
+      Each of guard, supply, pins, classify and verdict shall have a plant
+      control that turns it red, and stand-ins (an always-green aggregator, an
+      always-skip sieve) shall be reported FAIL-OPEN, before v0.1.0 is tagged.
+    release: v0.1.0
+    fields: {priority: must, category: non-functional}
+    links:
+      - type: constraint-satisfies
+        target: SC-4
+      - type: constraint-satisfies
+        target: CC-6
+
+  - id: REQ-005
+    type: requirement
+    title: Verdict self-test
+    status: draft
+    description: >
+      The verdict job shall run a decision-table self-test over planted needs
+      JSON before judging the caller's needs, and fail if any row disagrees.
+    release: v0.1.0
+    fields: {priority: must, category: functional}
+    links:
+      - type: constraint-satisfies
+        target: SC-1
+      - type: constraint-satisfies
+        target: SC-4
+
+  - id: REQ-006
+    type: requirement
+    title: Lockfile enforcement
+    status: draft
+    description: >
+      supply shall run cargo metadata --locked for every tracked file named
+      Cargo.lock, check every package-lock.json is in sync with its
+      package.json (npm ci refuses one that is not), and, with bazel set, require lockfile_mode=error on every invocation and in
+      .bazelrc.
+    release: v0.1.0
+    fields: {priority: must, category: functional}
+    links:
+      - type: constraint-satisfies
+        target: SC-5
+
+  - id: REQ-007
+    type: requirement
+    title: Audit every lockfile
+    status: draft
+    description: >
+      supply shall audit every tracked Cargo.lock with the configured auditor
+      (cargo-deny or cargo-audit) and every package-lock.json with npm audit,
+      shall fail when an auditor cannot run, and shall offer no waiver input.
+    release: v0.1.0
+    fields: {priority: must, category: functional}
+    links:
+      - type: satisfies
+        target: SSC-5
+
+  - id: REQ-008
+    type: requirement
+    title: Action-pin check
+    status: draft
+    description: >
+      pins shall fail on any uses: that is not a 40-hex SHA (local ./
+      excepted), a dtolnay toolchain that is not a version, cargo +nightly
+      without a date, or pip install without hashes. jig's own workflows shall
+      pass it.
+    release: v0.1.0
+    fields: {priority: must, category: functional}
+    links:
+      - type: satisfies
+        target: SSC-2
+
+  - id: REQ-009
+    type: requirement
+    title: Fork guard
+    status: draft
+    description: >
+      guard shall run plant guard against the caller's workflows and jig's own,
+      failing on a self-hosted job without the fail-closed runs-on form, a
+      misspelled self-hosted label, or a self-hosted job in a
+      pull_request_target workflow.
+    release: v0.1.0
+    fields: {priority: must, category: functional}
+    links:
+      - type: satisfies
+        target: SSC-1
+
+  - id: REQ-010
+    type: requirement
+    title: Pinned tool binaries
+    status: draft
+    description: >
+      baseline shall take sieve and rivet from the caller's varve layer
+      (varve install, then varve verify exit 0, VARVE_ROOT under RUNNER_TEMP),
+      and plant from a release by exact version whose archive sha256 was
+      recorded from the cosign-verified SHA256SUMS.txt; sums are never fetched
+      at run time.
+    release: v0.1.0
+    fields: {priority: must, category: constraint}
+    links:
+      - type: satisfies
+        target: SSC-3
+
+  - id: REQ-011
+    type: requirement
+    title: No secrets, least privilege
+    status: draft
+    description: >
+      baseline.yml and required.yml shall declare no secrets and run with
+      contents: read, plus actions: read for the completeness step only.
+    release: v0.1.0
+    fields: {priority: must, category: constraint}
+    links:
+      - type: satisfies
+        target: SSC-4
+
+  - id: REQ-012
+    type: requirement
+    title: SHA-pinned callers and staged rollout
+    status: draft
+    description: >
+      Callers shall reference jig by 40-hex SHA; a jig commit shall pass jig's
+      own CI (jig calling itself) and a 48 h pilot soak before other repos bump.
+    release: v0.1.0
+    fields: {priority: must, category: interface}
+    links:
+      - type: constraint-satisfies
+        target: SC-6
+      - type: constraint-satisfies
+        target: CC-8
+
+  - id: REQ-013
+    type: requirement
+    title: Rollback
+    status: draft
+    description: >
+      Reverting a caller's uses: SHA shall restore its previous CI, and setting
+      enforce-skips false (or a fail-closed repo variable) shall make every
+      class run fleet-wide.
+    release: v0.1.0
+    fields: {priority: should, category: functional}
+    links:
+      - type: constraint-satisfies
+        target: SC-7
+      - type: constraint-satisfies
+        target: CC-4
+
+  - id: REQ-014
+    type: requirement
+    title: The verdict is the required context
+    status: draft
+    description: >
+      A caller adopting jig in enforce mode shall list required / verdict as a
+      required context in its ruleset, and jig's rollout check shall fail when
+      a caller's required-checks list is empty or omits it.
+    release: v0.1.0
+    fields: {priority: must, category: interface}
+    links:
+      - type: constraint-satisfies
+        target: SC-1
+      - type: constraint-satisfies
+        target: CC-7
+
+  - id: REQ-015
+    type: requirement
+    title: Delegated aggregators
+    status: draft
+    description: >
+      required / verdict shall accept a `delegated` list mapping caller jobs to
+      a caller aggregator (for example relay's Kani and Verus gates). A
+      delegated job's result is not judged by the verdict; its aggregator must
+      be in needs, be never-skip, succeed, and list the delegated job in its
+      own needs, or the verdict is red. The aggregator's reason-gated skips and
+      anti-vacuity checks stay in the caller.
+    release: v0.1.0
+    fields: {priority: must, category: functional}
+    links:
+      - type: constraint-satisfies
+        target: SC-1
+      - type: constraint-satisfies
+        target: CC-3
+
+  - id: REQ-016
+    type: requirement
+    title: Classes belong to the caller
+    status: draft
+    description: >
+      jig shall impose no class names. The caller's own classify job (job id
+      given to the verdict as --classifier-job, default classify) publishes
+      the adopter's sieve classes plus run_all; a gated job's if reads
+      needs.<classifier>.outputs.<class>, and the verdict reads the same
+      outputs. jig writes no class output and no default for one.
+    release: v0.1.0
+    fields: {priority: must, category: interface}
+    links:
+      - type: constraint-satisfies
+        target: SC-3
+      - type: constraint-satisfies
+        target: CC-5
+
+  - id: REQ-017
+    type: requirement
+    title: Caller workflow shape
+    status: draft
+    description: >
+      jig shall fail a caller workflow that holds a required or never-skip job
+      when it lacks a pull_request or merge_group trigger, carries paths,
+      paths-ignore or branch filters on pull_request or merge_group, or when
+      its required job is not `if: always()` with every other job in needs.
+    release: v0.1.0
+    fields: {priority: must, category: functional}
+    links:
+      - type: constraint-satisfies
+        target: SC-8
+      - type: constraint-satisfies
+        target: SC-2
+
+  - id: REQ-018
+    type: requirement
+    title: Classifier step in sieve's checked form
+    status: draft
+    description: >
+      The caller's classify job shall contain exactly the step sieve
+      check-workflows recognises (`sieve classify --config <cfg> --base
+      "$BASE_SHA" --event "$EVENT_NAME" --format github-output`, with a step
+      id and the fixed env); sieve check-workflows, not jig, verifies it.
+    release: v0.1.0
+    fields: {priority: must, category: interface}
+    links:
+      - type: constraint-satisfies
+        target: SC-3
+
+  - id: REQ-019
+    type: requirement
+    title: The jig checker binary reaches callers pinned
+    status: draft
+    description: >
+      baseline.yml and required.yml shall run the jig checker either from a
+      signed jig release carried in the pulseengine varve layer, or built with
+      cargo --locked from jig's source at the same SHA the caller pins. Which
+      one is an owner decision (jig publishes nothing today).
+    release: v0.1.0
+    fields: {priority: must, category: constraint}
+    links:
+      - type: satisfies
+        target: SSC-3
+
+  - id: REQ-020
+    type: requirement
+    title: Version 1.0 means fleet-wide use
+    status: draft
+    description: >
+      jig's first release is v0.1.0. jig shall be versioned 1.0 only when
+      every pulseengine repository with CI calls it in enforce mode, each
+      with a green required / verdict, every plant control PASS and every
+      stand-in FAIL-OPEN (owner, 2026-11-21).
+    release: v1.0.0
+    fields: {priority: must, category: non-functional}
+    links:
+      - type: constraint-satisfies
+        target: SC-6

@@ -1,0 +1,252 @@
+name: Release
+
+# Builds, checks, signs and publishes a jig release for a v* tag, the way
+# pulseengine/plant's release.yml does: static musl and aarch64-darwin
+# archives, a CycloneDX SBOM and a docs archive, all inside SHA256SUMS.txt,
+# which cosign signs keyless; SLSA provenance for the archives;
+# build-env.txt. varve verifies these before carrying jig in the pulseengine
+# layer (owner decision 2026-11-21: jig cuts signed releases).
+#
+# Signing happens only in a run for a tag ref, so the keyless certificate
+# names release.yml@refs/tags/<tag>. There is no workflow_dispatch. To retry a
+# failed tag run, use "Re-run failed jobs", which keeps the tag ref.
+#
+# Runners: GitHub-hosted on purpose. The trigger is a tag push, never a pull
+# request; signed builds run on fresh ephemeral machines; macOS has no
+# self-hosted pool. Images are pinned, never *-latest. No org secrets: only
+# the job token, with contents/id-token/attestations write in the last job.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  version-guard:
+    name: Tag names the crate version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare the tag with Cargo.toml
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF" in refs/tags/v*) ;; *) echo "not a v* tag: $GITHUB_REF"; exit 1 ;; esac
+          tag="${GITHUB_REF#refs/tags/v}"
+          crate=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          test -n "$crate"
+          [ "$tag" = "$crate" ] || { echo "tag v$tag does not name Cargo.toml version $crate"; exit 1; }
+
+  build-binaries:
+    name: Build ${{ matrix.target }}
+    needs: [version-guard]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+            musl: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            musl: true
+          # No Intel macOS build: dropped fleet-wide by owner decision 2026-11-20.
+          - target: aarch64-apple-darwin
+            os: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
+        with:
+          toolchain: 1.99.1
+          targets: ${{ matrix.target }}
+      - name: Install musl toolchain
+        if: matrix.musl
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build jig
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo build --locked --release --target "$TARGET"
+      - name: Package archive
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF#refs/tags/}"
+          ARCHIVE="jig-${VERSION}-${TARGET}.tar.gz"
+          mkdir -p staging
+          cp "target/${TARGET}/release/jig" staging/
+          strip staging/jig
+          cp README.md LICENSE staging/
+          tar -czf "$ARCHIVE" -C staging .
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      # The archive a user downloads, not the loose build output.
+      - name: Smoke-test the packaged binary
+        run: |
+          set -euo pipefail
+          mkdir -p smoke
+          tar -xzf "$ARCHIVE" -C smoke
+          smoke/jig --version | grep -qx "jig ${VERSION#v}"
+          smoke/jig verdict --self-test
+          smoke/jig pins .
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: binary-${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
+          retention-days: 7
+
+  # The SBOM tool runs here, with a read-only token, not where signing happens.
+  sbom:
+    name: SBOM (CycloneDX)
+    needs: [version-guard]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
+        with:
+          toolchain: 1.99.1
+      - name: Install cargo-cyclonedx
+        run: cargo install --locked cargo-cyclonedx --version 0.5.10
+      - name: Generate the SBOM
+        run: |
+          set -euo pipefail
+          cargo cyclonedx --manifest-path Cargo.toml --format json --spec-version 1.5
+          src=$(find . -maxdepth 1 -name '*.cdx.json' | head -1)
+          test -n "$src" && test -s "$src"
+          mkdir -p sbom && cp "$src" sbom/jig.cdx.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sbom
+          path: sbom/jig.cdx.json
+          retention-days: 7
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-binaries, sbom]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
+        with:
+          toolchain: 1.99.1
+      - name: Download all build artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: artifacts
+      - name: Flatten release assets
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF#refs/tags/}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "BARE=${VERSION#v}" >> "$GITHUB_ENV"
+          mkdir -p release-assets
+          find artifacts -type f -name "*.tar.gz" -exec cp {} release-assets/ \;
+          n=$(find release-assets -name '*.tar.gz' | wc -l)
+          test "$n" -eq 3 || { echo "expected 3 archives, found $n"; exit 1; }
+          ls -la release-assets/
+      # The SBOM goes in before the sums, so its digest is signed too.
+      - name: Add the SBOM
+        run: cp artifacts/sbom/jig.cdx.json "release-assets/jig-${BARE}.cdx.json"
+      # README, the design note and every `jig docs` topic, from the released
+      # x86_64 binary, before the sums, so a varve layer can ingest it.
+      - name: Build the docs archive
+        run: |
+          set -euo pipefail
+          mkdir -p bin "docs-out/jig-${BARE}-docs"
+          tar -xzf "release-assets/jig-${VERSION}-x86_64-unknown-linux-musl.tar.gz" -C bin
+          out="docs-out/jig-${BARE}-docs"
+          cp README.md "$out/"
+          cp docs/design.md "$out/"
+          topics=$(bin/jig docs | sed -n 's/^  \([a-z-]*\) .*/\1/p')
+          test -n "$topics"
+          for t in $topics; do bin/jig docs "$t" > "$out/$t.md"; done
+          tar -czf "release-assets/jig-${BARE}-docs.tar.gz" -C docs-out .
+          tar -tzf "release-assets/jig-${BARE}-docs.tar.gz"
+      - name: Capture build environment
+        run: |
+          set -euo pipefail
+          {
+            echo "rustc: $(rustc --version)"
+            echo "cargo: $(cargo --version)"
+            echo "cosign: v2.4.1 (sigstore/cosign-installer, pinned below)"
+            echo "runner: $(uname -srm)"
+          } > release-assets/build-env.txt
+          cat release-assets/build-env.txt
+      - name: Generate SHA256 checksums
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum ./* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      # Nothing is attested or signed from a branch, whatever started the run.
+      - name: Sign only from a tag ref
+        run: |
+          case "$GITHUB_REF" in refs/tags/v*) ;; *) echo "not a v* tag: $GITHUB_REF"; exit 1 ;; esac
+      - name: Generate SLSA build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: "release-assets/*.tar.gz"
+      - name: Install cosign
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: 'v2.4.1'
+      - name: Sign SHA256SUMS with cosign (keyless OIDC)
+        run: |
+          set -euo pipefail
+          cd release-assets
+          cosign sign-blob \
+            --yes \
+            --bundle SHA256SUMS.txt.cosign.bundle \
+            --output-signature SHA256SUMS.txt.sig \
+            --output-certificate SHA256SUMS.txt.pem \
+            SHA256SUMS.txt
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          notes=$(mktemp)
+          cat > "$notes" <<EOF
+          Work in progress; no production-ready claims.
+
+          Verify this release:
+
+              cosign verify-blob \\
+                --certificate-identity 'https://github.com/pulseengine/jig/.github/workflows/release.yml@refs/tags/${VERSION}' \\
+                --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \\
+                --bundle SHA256SUMS.txt.cosign.bundle SHA256SUMS.txt
+              sha256sum -c --ignore-missing SHA256SUMS.txt
+              gh attestation verify jig-${VERSION}-<target>.tar.gz --repo pulseengine/jig
+          EOF
+          # Never overwrite published assets: to re-run, delete the release.
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "release $VERSION already exists; delete it before re-running" >&2
+            exit 1
+          fi
+          gh release create "$VERSION" --verify-tag --title "jig $VERSION" \
+            --notes-file "$notes" --prerelease release-assets/*

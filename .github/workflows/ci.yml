@@ -1,0 +1,168 @@
+# jig's own CI: rivet validate, actionlint, and the Rust gates with jig's
+# planted controls and stand-ins, on light runners behind the fork guard.
+# Phase 0: the baseline and required jobs call jig's own reusable workflows
+# (baseline.yml's guard builds plant at PLANT_REV, which carries plant#33).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# `shell: bash` runs with -eo pipefail, so a piped step reports its own exit.
+defaults:
+  run:
+    shell: bash
+
+env:
+  # The rivet in the varve.toml layer (covalent 2026.11.19 composes rivet
+  # 0.43.0). sha256 of rivet-v0.43.0-x86_64-unknown-linux-gnu.tar.gz from the
+  # release's SHA256SUMS.txt, recorded 2026-11-21; the extracted binary
+  # (a8c3dec7…f770) matches the digest in the signed layer.
+  RIVET_VERSION: v0.43.0
+  RIVET_SHA256: b3681544f1a49d9ec71ba271daa8de1f45e50a8a1362370ca068603b8a94f22c
+  # sha256 of actionlint_1.7.12_linux_amd64.tar.gz from the release's
+  # checksums.txt, recorded 2026-11-21.
+  ACTIONLINT_VERSION: 1.7.12
+  ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+  # plant v0.3.0, x86_64-unknown-linux-musl, from SHA256SUMS.txt verified
+  # with cosign against release.yml@refs/tags/v0.3.0 on 2026-11-21.
+  PLANT_VERSION: v0.3.0
+  PLANT_SHA256: de3582319ae8476c3dfc74567aef9396b09c91eb28a59cb7cec776d678469bed
+
+jobs:
+  rivet:
+    name: rivet validate
+    # Fork PRs never reach self-hosted runners (fail-closed same-repo guard).
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: fetch pinned rivet release
+        run: |
+          d="$RUNNER_TEMP/rivet"; mkdir -p "$d"; cd "$d"
+          asset="rivet-$RIVET_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o "$asset" "https://github.com/pulseengine/rivet/releases/download/$RIVET_VERSION/$asset"
+          echo "$RIVET_SHA256  $asset" | sha256sum -c -
+          tar xzf "$asset"
+          echo "$d/$(dirname "$(find . -name rivet -type f | head -1)")" >> "$GITHUB_PATH"
+      - name: rivet validate
+        run: |
+          rivet --version
+          rivet validate
+
+  lint:
+    name: actionlint
+    # Fork PRs never reach self-hosted runners (fail-closed same-repo guard).
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: fetch pinned actionlint release
+        run: |
+          d="$RUNNER_TEMP/actionlint"; mkdir -p "$d"; cd "$d"
+          asset="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "$asset" "https://github.com/rhysd/actionlint/releases/download/v$ACTIONLINT_VERSION/$asset"
+          echo "$ACTIONLINT_SHA256  $asset" | sha256sum -c -
+          tar xzf "$asset" actionlint
+          echo "$d" >> "$GITHUB_PATH"
+      - name: actionlint
+        run: |
+          actionlint -version
+          actionlint -no-color .github/workflows/*.yml
+
+  test:
+    name: test
+    # Fork PRs never reach self-hosted runners (fail-closed same-repo guard).
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
+        with:
+          toolchain: 1.99.1
+          components: rustfmt, clippy
+          targets: wasm32-wasip2
+      - name: fmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: test
+        run: cargo test --locked --no-fail-fast
+      - name: wasm32-wasip2 build
+        run: cargo build --locked --target wasm32-wasip2
+      - name: build jig
+        run: |
+          cargo build --locked --release
+          echo "JIG=$PWD/target/release/jig" >> "$GITHUB_ENV"
+      - name: jig on jig
+        run: |
+          "$JIG" verdict --self-test
+          "$JIG" pins .
+      - name: fetch pinned rivet, actionlint and plant
+        run: |
+          d="$RUNNER_TEMP/tools"; mkdir -p "$d"; cd "$d"
+          r="rivet-$RIVET_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o "$r" "https://github.com/pulseengine/rivet/releases/download/$RIVET_VERSION/$r"
+          echo "$RIVET_SHA256  $r" | sha256sum -c -
+          mkdir rivet-x && tar -xzf "$r" -C rivet-x
+          cp "$(find rivet-x -name rivet -type f | head -1)" .
+          a="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "$a" "https://github.com/rhysd/actionlint/releases/download/v$ACTIONLINT_VERSION/$a"
+          echo "$ACTIONLINT_SHA256  $a" | sha256sum -c -
+          tar -xzf "$a" actionlint
+          p="plant-$PLANT_VERSION-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL -o "$p" "https://github.com/pulseengine/plant/releases/download/$PLANT_VERSION/$p"
+          echo "$PLANT_SHA256  $p" | sha256sum -c -
+          tar -xzf "$p" ./plant
+          echo "$d" >> "$GITHUB_PATH"
+      # Each control plants one bad input; only exit 0 (every control PASS)
+      # is green. A dedicated target dir, never this repo's target/.
+      - name: plant controls
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/plant-controls-target
+        run: plant ci-controls.toml
+      # The stand-ins cannot fail, so every control must come back FAIL-OPEN:
+      # plant exits 1, and the FAIL-OPEN count equals the manifest's count.
+      - name: stand-ins report FAIL-OPEN
+        run: |
+          set +e
+          plant ci-controls.stand-in.toml --format json > "$RUNNER_TEMP/stand-in.json"
+          rc=$?
+          set -e
+          want=$(grep -c '^\[\[control\]\]' ci-controls.stand-in.toml)
+          open=$(grep -c '"reason": "FAIL-OPEN' "$RUNNER_TEMP/stand-in.json" || true)
+          echo "plant exit $rc; $open of $want stand-in controls FAIL-OPEN"
+          [ "$rc" -eq 1 ] && [ "$want" -gt 0 ] && [ "$open" -eq "$want" ]
+
+  # Phase 0: jig calls its own baseline and required workflows, from this
+  # commit, building jig from source. "required / verdict" becomes the one
+  # required context once this has run green on main.
+  baseline:
+    uses: ./.github/workflows/baseline.yml
+    with:
+      audit: cargo-audit
+      jig-from-source: true
+
+  required:
+    needs: [baseline, rivet, lint, test]
+    if: always()
+    uses: ./.github/workflows/required.yml
+    with:
+      needs-json: ${{ toJSON(needs) }}
+      never-skip: "rivet lint test"
+      jig-from-source: true

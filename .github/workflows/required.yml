@@ -1,0 +1,127 @@
+# jig required: the one required context per repository, "required / verdict".
+# The caller invokes it last, after every other job:
+#
+#   required:
+#     needs: [baseline, build, test, ...every other job...]
+#     if: always()
+#     uses: pulseengine/jig/.github/workflows/required.yml@<40-hex-sha>
+#     with:
+#       needs-json: ${{ toJSON(needs) }}
+#
+# It is a separate reusable workflow because only the caller can `needs:` its
+# own jobs (DD-002). The verdict fails closed (REQ-001): red on empty needs,
+# any failure, cancellation or unknown result, a baseline that did not
+# succeed, a skip of a never-skip job or of a class sieve selected, and on a
+# caller job missing from needs (REQ-002). It runs its decision-table
+# self-test first (REQ-005) and checks the caller workflow's shape (REQ-017).
+name: required
+
+on:
+  workflow_call:
+    inputs:
+      needs-json:
+        description: "toJSON(needs) of the calling job"
+        type: string
+        required: true
+      never-skip:
+        description: "Space-separated job ids that must never be skipped"
+        type: string
+        default: ""
+      advisory:
+        description: "Space-separated job ids allowed to fail, by name"
+        type: string
+        default: ""
+      delegated:
+        description: "Space-separated job=aggregator pairs judged by a caller aggregator (REQ-015)"
+        type: string
+        default: ""
+      classifier-job:
+        description: "The caller's sieve classify job; gated jobs read needs.<it>.outputs.<class>"
+        type: string
+        default: classify
+      jig-from-source:
+        description: "Build jig from the caller's checkout. Only pulseengine/jig itself may set this (phase 0)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # Set by the commit that follows each signed jig release (docs/releasing.md).
+  JIG_VERSION: ""
+  JIG_SHA256: ""
+
+jobs:
+  verdict:
+    name: verdict
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
+        if: inputs.jig-from-source
+        with:
+          toolchain: 1.99.1
+      - name: install jig
+        env:
+          FROM_SOURCE: ${{ inputs.jig-from-source }}
+          REPO: ${{ github.repository }}
+        run: |
+          d="$RUNNER_TEMP/jig"; mkdir -p "$d"
+          if [ "$FROM_SOURCE" = true ]; then
+            [ "$REPO" = pulseengine/jig ] || { echo "jig-from-source is only for pulseengine/jig"; exit 1; }
+            cargo build --locked --release --target-dir "$RUNNER_TEMP/jig-target"
+            cp "$RUNNER_TEMP/jig-target/release/jig" "$d/"
+          else
+            [ -n "$JIG_SHA256" ] || { echo "no jig release is pinned in this required.yml"; exit 1; }
+            a="jig-$JIG_VERSION-x86_64-unknown-linux-musl.tar.gz"
+            (cd "$d" && curl -fsSL -o "$a" "https://github.com/pulseengine/jig/releases/download/$JIG_VERSION/$a" \
+              && echo "$JIG_SHA256  $a" | sha256sum -c - && tar -xzf "$a" ./jig)
+          fi
+          echo "$d" >> "$GITHUB_PATH"
+      # github.workflow_ref is the caller's: owner/repo/<path>@<ref>.
+      - name: locate the caller workflow
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          path="${WORKFLOW_REF#"$REPO"/}"
+          path="${path%%@*}"
+          case "$path" in .github/workflows/*.yml|.github/workflows/*.yaml) ;; *)
+            echo "cannot derive the caller workflow from '$WORKFLOW_REF'"; exit 1 ;;
+          esac
+          test -f "$path"
+          echo "CALLER_WORKFLOW=$path" >> "$GITHUB_ENV"
+      # Local ./ calls are accepted only for jig calling itself from source.
+      - name: caller workflow shape
+        env:
+          FROM_SOURCE: ${{ inputs.jig-from-source }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$FROM_SOURCE" = true ] && [ "$REPO" = pulseengine/jig ]; then
+            jig caller --workflow "$CALLER_WORKFLOW" --allow-local
+          else
+            jig caller --workflow "$CALLER_WORKFLOW"
+          fi
+      - name: verdict
+        env:
+          NEEDS_JSON: ${{ inputs.needs-json }}
+          NEVER_SKIP: ${{ inputs.never-skip }}
+          ADVISORY: ${{ inputs.advisory }}
+          DELEGATED: ${{ inputs.delegated }}
+          CLASSIFIER: ${{ inputs.classifier-job }}
+        run: |
+          printf '%s' "$NEEDS_JSON" > "$RUNNER_TEMP/needs.json"
+          args=(--needs "$RUNNER_TEMP/needs.json" --workflow "$CALLER_WORKFLOW" --classifier-job "$CLASSIFIER")
+          for j in $NEVER_SKIP; do args+=(--never-skip "$j"); done
+          for j in $ADVISORY; do args+=(--advisory "$j"); done
+          for p in $DELEGATED; do args+=(--delegated "$p"); done
+          jig --version
+          jig verdict "${args[@]}"

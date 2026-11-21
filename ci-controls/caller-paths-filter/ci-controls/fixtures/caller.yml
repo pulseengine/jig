@@ -1,0 +1,36 @@
+# A caller workflow in the shape jig expects (REQ-017), with its own sieve
+# classify job. Planted copies of it and of needs.json turn jig verdict /
+# jig caller red.
+on:
+  pull_request:
+    paths: ["src/**"]
+  merge_group:
+permissions:
+  contents: read
+jobs:
+  baseline:
+    uses: pulseengine/jig/.github/workflows/baseline.yml@0123456789abcdef0123456789abcdef01234567
+  classify:
+    runs-on: ubuntu-24.04
+    outputs:
+      run_all: ${{ steps.classify.outputs.run_all }}
+      build: ${{ steps.classify.outputs.build }}
+    steps:
+      - id: classify
+        run: echo "sieve classify would run here"
+  build:
+    needs: classify
+    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.build != 'false') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo build
+  clippy:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo clippy
+  required:
+    needs: [baseline, classify, build, clippy]
+    if: always()
+    uses: pulseengine/jig/.github/workflows/required.yml@0123456789abcdef0123456789abcdef01234567
+    with:
+      needs-json: ${{ toJSON(needs) }}

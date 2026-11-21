@@ -1,0 +1,8 @@
+artifacts:
+  - id: REQ-PLANTED
+    type: requirement
+    title: Planted broken link
+    status: draft
+    links:
+      - type: constraint-satisfies
+        target: SC-DOES-NOT-EXIST

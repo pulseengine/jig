@@ -1,0 +1,55 @@
+# rivet: verifies REQ-004
+# Stand-ins (phase 0): the same plants against a gate that cannot fail. An
+# always-green aggregator runs jig's self-test and never looks at needs; an
+# always-green pin check prints help. Every control here must report
+# FAIL-OPEN, which shows ci-controls.toml's PASS comes from the real gates.
+#   JIG=$PWD/target/release/jig plant ci-controls.stand-in.toml   # exits 1
+
+[[control]]
+id = "stand-in-required-sees-failure"
+check = "aggregator: always-green stand-in"
+run = '"$JIG" verdict --self-test'
+plant = "ci-controls/required-sees-failure"
+stderr_or_stdout_matches = '.'
+
+[[control]]
+id = "stand-in-required-sees-cancelled"
+check = "aggregator: always-green stand-in"
+run = '"$JIG" verdict --self-test'
+plant = "ci-controls/required-sees-cancelled"
+stderr_or_stdout_matches = '.'
+
+[[control]]
+id = "stand-in-required-sees-empty"
+check = "aggregator: always-green stand-in"
+run = '"$JIG" verdict --self-test'
+plant = "ci-controls/required-sees-empty"
+stderr_or_stdout_matches = '.'
+
+[[control]]
+id = "stand-in-required-sees-selected-skip"
+check = "aggregator: always-green stand-in"
+run = '"$JIG" verdict --self-test'
+plant = "ci-controls/required-sees-selected-skip"
+stderr_or_stdout_matches = '.'
+
+[[control]]
+id = "stand-in-required-sees-never-skip-skip"
+check = "aggregator: always-green stand-in"
+run = '"$JIG" verdict --self-test'
+plant = "ci-controls/required-sees-never-skip-skip"
+stderr_or_stdout_matches = '.'
+
+[[control]]
+id = "stand-in-required-sees-missing-job"
+check = "aggregator: always-green stand-in"
+run = '"$JIG" verdict --self-test'
+plant = "ci-controls/required-sees-missing-job"
+stderr_or_stdout_matches = '.'
+
+[[control]]
+id = "stand-in-pins-tag-ref"
+check = "pins: always-green stand-in"
+run = '"$JIG" pins --help'
+plant = "ci-controls/pins-tag-ref"
+stderr_or_stdout_matches = '.'

@@ -1,0 +1,6 @@
+# plant guard config for jig: the runner labels provisioned for pulseengine's
+# self-hosted pool that jig's own workflows may select. baseline.yml and
+# required.yml are workflow_call workflows; their self-hosted jobs use the
+# fail-closed form, which holds because a called workflow sees the caller's
+# event. Accepting workflow_call needs plant with plant#33.
+labels = ["self-hosted", "linux", "x64", "light"]

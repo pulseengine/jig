@@ -1,0 +1,61 @@
+# jig as a step, for a repository that wants one check in its own job before
+# (or besides) calling the baseline workflows:
+#
+#   - uses: pulseengine/jig@<40-hex-sha>
+#     with:
+#       command: pins
+#
+# The binary comes from the signed jig release whose sha256 is recorded below
+# (set by the commit that follows each release, docs/releasing.md). Until the
+# first release, or when the digest is empty, it is built with cargo --locked
+# from this action's own checkout (github.action_path), which is the commit
+# the caller pinned. The caller needs a Rust toolchain on PATH for that.
+name: jig
+description: pulseengine shared CI baseline checks (pins, verdict, caller, classes)
+inputs:
+  command:
+    description: "jig subcommand: pins, verdict, caller or classes"
+    required: true
+  args:
+    description: "Arguments after the subcommand, split on whitespace (from your reviewed workflow, never PR text)"
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: install jig
+      shell: bash
+      env:
+        JIG_VERSION: ""
+        JIG_SHA256: ""
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        d="$RUNNER_TEMP/jig-action"; mkdir -p "$d"
+        if [ -n "$JIG_SHA256" ]; then
+          case "$(uname -s)-$(uname -m)" in
+            Linux-x86_64) t=x86_64-unknown-linux-musl ;;
+            Linux-aarch64) t=aarch64-unknown-linux-musl ;;
+            Darwin-arm64) t=aarch64-apple-darwin ;;
+            *) echo "no jig release archive for $(uname -s)-$(uname -m)"; exit 1 ;;
+          esac
+          [ "$t" = x86_64-unknown-linux-musl ] || { echo "only the x86_64 linux digest is recorded; build from source instead"; exit 1; }
+          a="jig-$JIG_VERSION-$t.tar.gz"
+          (cd "$d" && curl -fsSL -o "$a" "https://github.com/pulseengine/jig/releases/download/$JIG_VERSION/$a" \
+            && echo "$JIG_SHA256  $a" | sha256sum -c - && tar -xzf "$a" ./jig)
+        else
+          cargo build --locked --release --manifest-path "$ACTION_PATH/Cargo.toml" --target-dir "$RUNNER_TEMP/jig-action-target"
+          cp "$RUNNER_TEMP/jig-action-target/release/jig" "$d/"
+        fi
+        echo "$d" >> "$GITHUB_PATH"
+    - name: jig ${{ inputs.command }}
+      shell: bash
+      env:
+        COMMAND: ${{ inputs.command }}
+        ARGS: ${{ inputs.args }}
+      run: |
+        set -euo pipefail
+        case "$COMMAND" in pins|verdict|caller|classes) ;; *) echo "unknown jig command '$COMMAND'"; exit 2 ;; esac
+        read -r -a argv <<< "$ARGS"
+        jig --version
+        jig "$COMMAND" "${argv[@]}"
