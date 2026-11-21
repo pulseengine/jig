@@ -1,7 +1,7 @@
 # jig's own CI: rivet validate, actionlint, and the Rust gates with jig's
 # planted controls and stand-ins, on light runners behind the fork guard.
 # Phase 0: the baseline and required jobs call jig's own reusable workflows
-# (baseline.yml's guard builds plant at PLANT_REV, which carries plant#33).
+# (baseline.yml's guard uses plant v0.4.0, which carries plant#34).
 name: CI
 
 on:
@@ -33,10 +33,10 @@ env:
   # checksums.txt, recorded 2026-11-21.
   ACTIONLINT_VERSION: 1.7.12
   ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-  # plant v0.3.0, x86_64-unknown-linux-musl, from SHA256SUMS.txt verified
-  # with cosign against release.yml@refs/tags/v0.3.0 on 2026-11-21.
-  PLANT_VERSION: v0.3.0
-  PLANT_SHA256: de3582319ae8476c3dfc74567aef9396b09c91eb28a59cb7cec776d678469bed
+  # plant v0.4.0, x86_64-unknown-linux-musl, from SHA256SUMS.txt verified
+  # with cosign against release.yml@refs/tags/v0.4.0 on 2026-11-21.
+  PLANT_VERSION: v0.4.0
+  PLANT_SHA256: 30bfd8b63bf95f4a4c3bd6ff890b551f550d75dc4a7b2bd3098224d76a99761f
 
 jobs:
   rivet:

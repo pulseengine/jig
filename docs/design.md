@@ -43,9 +43,9 @@ relay, temper, varve) and recorded in artifacts/ (REQ-015..020, DD-011..013):
 - **jig cuts signed releases** (owner, 2026-11-21) and the workflows fetch
   its binary by recorded digest (docs/releasing.md); `action.yml` offers
   single checks as a step. Version 1.0 means fleet-wide use (REQ-020).
-- **Blocker**: plant v0.3.0 rejects workflow_call workflows and calls to
-  another repo's reusable workflow; adoption, and jig calling itself
-  (phase 0), wait for the plant release carrying plant#33.
+- **plant v0.4.0** accepts workflow_call workflows and reusable-workflow
+  calls listed in `trusted_workflows` (plant#34); v0.3.0 rejected every jig
+  caller.
 
 ## Why a separate repo
 

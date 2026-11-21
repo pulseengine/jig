@@ -56,22 +56,16 @@ defaults:
 
 env:
   # jig itself: set by the commit that follows each signed jig release
-  # (docs/releasing.md). Empty until v0.1.0 is cut; callers other than
-  # pulseengine/jig cannot run the baseline before then.
-  JIG_VERSION: ""
-  JIG_SHA256: ""
-  # plant v0.3.0, x86_64-unknown-linux-musl, from SHA256SUMS.txt verified
-  # with cosign against release.yml@refs/tags/v0.3.0 on 2026-11-21.
-  # v0.3.0 predates plant#33: its guard rejects every jig caller. Bump to the
-  # first release that carries trusted_workflows before any pilot.
-  PLANT_VERSION: v0.3.0
-  PLANT_SHA256: de3582319ae8476c3dfc74567aef9396b09c91eb28a59cb7cec776d678469bed
-  # Stopgap until a plant release carries plant#33 (owner, 2026-11-21): when
-  # set, guard builds plant with cargo install --locked at this pulseengine/plant
-  # commit instead of using the release above.
-  # b3eaf6b: plant main after plant#34 (trusted_workflows), merged 2026-11-21;
-  # guard built from it passes jig's workflows and a trusted-workflow caller.
-  PLANT_REV: b3eaf6bf90cc1ddc981a71b78dfe81253a955425
+  # (docs/releasing.md). v0.1.0: sha256 of the x86_64 musl archive from
+  # SHA256SUMS.txt, verified with cosign against release.yml@refs/tags/v0.1.0
+  # on 2026-11-21.
+  JIG_VERSION: v0.1.0
+  JIG_SHA256: 730cdfcd902544c945a31bfa20ae11e00d8990308b379a06bb9b6d3e5f9259b4
+  # plant v0.4.0 (carries plant#34, trusted_workflows), x86_64-unknown-linux-musl,
+  # from SHA256SUMS.txt verified with cosign against
+  # release.yml@refs/tags/v0.4.0 on 2026-11-21.
+  PLANT_VERSION: v0.4.0
+  PLANT_SHA256: 30bfd8b63bf95f4a4c3bd6ff890b551f550d75dc4a7b2bd3098224d76a99761f
 
 jobs:
   guard:
@@ -82,18 +76,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
-        if: env.PLANT_REV != ''
-        with:
-          toolchain: 1.99.1
       - name: fetch pinned plant
         run: |
-          if [ -n "$PLANT_REV" ]; then
-            [[ "$PLANT_REV" =~ ^[0-9a-f]{40}$ ]] || { echo "PLANT_REV must be a 40-hex commit"; exit 1; }
-            cargo install --locked --git https://github.com/pulseengine/plant --rev "$PLANT_REV" --root "$RUNNER_TEMP/plant-src" plant
-            echo "$RUNNER_TEMP/plant-src/bin" >> "$GITHUB_PATH"
-            exit 0
-          fi
           d="$RUNNER_TEMP/plant"; mkdir -p "$d"; cd "$d"
           a="plant-$PLANT_VERSION-x86_64-unknown-linux-musl.tar.gz"
           curl -fsSL -o "$a" "https://github.com/pulseengine/plant/releases/download/$PLANT_VERSION/$a"
