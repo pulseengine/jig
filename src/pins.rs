@@ -251,9 +251,9 @@ struct Walker<'a> {
     report: Report,
     /// Every literal value each `env:` key is given anywhere in the document.
     env: BTreeMap<String, Vec<String>>,
-    /// The repository pins its toolchain in rust-toolchain(.toml), which
-    /// rustup obeys whatever the action installed.
-    toolchain_file: bool,
+    /// Some env: is an expression or some run: writes $GITHUB_ENV, so no
+    /// env reference can be resolved statically.
+    env_dynamic: bool,
 }
 
 impl Walker<'_> {
@@ -344,17 +344,18 @@ impl Walker<'_> {
             .and_then(|v| v.strip_suffix("}}"))
             .map(str::trim);
         match inner.and_then(|v| v.strip_prefix("env.")) {
-            Some(name) => self.env.get(name).is_some_and(|defs| {
-                !defs.is_empty() && defs.iter().all(|d| is_toolchain_version(d))
-            }),
+            Some(_) if self.env_dynamic => false,
+            Some(name) => self
+                .env
+                .get(&name.to_ascii_lowercase())
+                .is_some_and(|defs| {
+                    !defs.is_empty() && defs.iter().all(|d| is_toolchain_version(d))
+                }),
             None => false,
         }
     }
 
     fn toolchain(&mut self, step: &Node, uses_line: usize, path: &str) {
-        if self.toolchain_file {
-            return;
-        }
         match step.get("with").and_then(|w| w.get("toolchain")) {
             None => self.add(
                 uses_line,
@@ -378,12 +379,6 @@ impl Walker<'_> {
 
 /// Check one workflow or action file's text.
 pub fn check_text(file: &str, text: &str) -> Report {
-    check_text_with(file, text, false)
-}
-
-/// As [`check_text`], told whether the repository pins its toolchain in a
-/// rust-toolchain file.
-pub fn check_text_with(file: &str, text: &str, toolchain_file: bool) -> Report {
     match yaml::parse(text) {
         Err(e) => Report {
             uses: 0,
@@ -397,12 +392,12 @@ pub fn check_text_with(file: &str, text: &str, toolchain_file: bool) -> Report {
         },
         Ok(root) => {
             let mut env = BTreeMap::new();
-            env_defs(&root, &mut env);
+            let env_dynamic = env_defs(&root, &mut env);
             let mut w = Walker {
                 file,
                 report: Report::default(),
                 env,
-                toolchain_file,
+                env_dynamic,
             };
             w.walk(&root, "");
             w.report
@@ -469,7 +464,6 @@ pub struct DirReport {
 /// Scan a directory. `Err` means the scan could not run (exit 2).
 pub fn check_dir(root: &Path) -> Result<DirReport, String> {
     let files = scan_files(root)?;
-    let tc_file = toolchain_file_pinned(root);
     let scanned: BTreeSet<String> = files.iter().map(|f| shown(root, f)).collect();
     let mut rep = DirReport {
         files: files.len(),
@@ -479,7 +473,7 @@ pub fn check_dir(root: &Path) -> Result<DirReport, String> {
     for f in files {
         let name = shown(root, &f);
         let text = fs::read_to_string(&f).map_err(|e| format!("cannot read {name}: {e}"))?;
-        let r = check_text_with(&name, &text, tc_file);
+        let r = check_text(&name, &text);
         rep.uses += r.uses;
         rep.violations.extend(r.violations);
         for (line, path, value) in r.local {
@@ -534,40 +528,41 @@ fn unscanned_local(value: &str, scanned: &BTreeSet<String>) -> Option<String> {
     }
 }
 
-/// Collect every `env:` mapping's scalar values, by key, anywhere in the tree.
-fn env_defs(node: &Node, out: &mut BTreeMap<String, Vec<String>>) {
+/// Collect every `env:` mapping's scalar values, by lower-cased key, anywhere
+/// in the tree. Returns true when an env reference cannot be resolved
+/// statically: some `env:` is not a mapping (an expression), or some `run:`
+/// mentions GITHUB_ENV and so may set a variable at run time.
+fn env_defs(node: &Node, out: &mut BTreeMap<String, Vec<String>>) -> bool {
+    let mut dynamic = false;
     match node {
         Node::Scalar { .. } => {}
-        Node::Seq { items, .. } => items.iter().for_each(|n| env_defs(n, out)),
+        Node::Seq { items, .. } => {
+            for n in items {
+                dynamic |= env_defs(n, out);
+            }
+        }
         Node::Map { entries, .. } => {
             for e in entries {
-                if let ("env", Node::Map { entries: vars, .. }) = (e.key.as_str(), &e.value) {
-                    for v in vars {
-                        let val = match &v.value {
-                            Node::Scalar { value, .. } => value.clone(),
-                            // A non-scalar definition is never a version.
-                            _ => String::new(),
-                        };
-                        out.entry(v.key.clone()).or_default().push(val);
+                match (e.key.as_str(), &e.value) {
+                    ("env", Node::Map { entries: vars, .. }) => {
+                        for v in vars {
+                            let val = match &v.value {
+                                Node::Scalar { value, .. } => value.clone(),
+                                // A non-scalar definition is never a version.
+                                _ => String::new(),
+                            };
+                            out.entry(v.key.to_ascii_lowercase()).or_default().push(val);
+                        }
                     }
+                    ("env", _) => dynamic = true,
+                    ("run", Node::Scalar { value, .. }) if value.contains("GITHUB_ENV") => {
+                        dynamic = true
+                    }
+                    _ => {}
                 }
-                env_defs(&e.value, out);
+                dynamic |= env_defs(&e.value, out);
             }
         }
     }
-}
-
-/// Does the repository root pin a toolchain version in rust-toolchain(.toml)?
-fn toolchain_file_pinned(root: &Path) -> bool {
-    if let Ok(t) = fs::read_to_string(root.join("rust-toolchain.toml")) {
-        return t.lines().any(|l| {
-            let l = l.trim();
-            l.strip_prefix("channel")
-                .map(str::trim_start)
-                .and_then(|r| r.strip_prefix('='))
-                .map(|v| v.trim().trim_matches('"'))
-                .is_some_and(is_toolchain_version)
-        });
-    }
-    fs::read_to_string(root.join("rust-toolchain")).is_ok_and(|t| is_toolchain_version(t.trim()))
+    dynamic
 }

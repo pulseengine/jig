@@ -574,34 +574,47 @@ fn a_toolchain_from_a_literal_env_version_is_pinned() {
 
 // rivet: verifies REQ-008
 #[test]
-fn a_pinned_rust_toolchain_file_pins_the_toolchain() {
+fn a_rust_toolchain_file_does_not_excuse_a_floating_toolchain() {
     let w = format!(
-        "on: push\njobs:\n  b:\n    runs-on: x\n    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: stable\n      - uses: dtolnay/rust-toolchain@{SHA}\n"
+        "on: push\njobs:\n  b:\n    runs-on: x\n    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: stable\n"
     );
-    for (file, body, want) in [
-        (
-            "rust-toolchain.toml",
-            "[toolchain]\nchannel = \"1.92.0\"\n",
-            0,
+    let d = dir("tc-file");
+    put(&d, ".github/workflows/ci.yml", &w);
+    put(
+        &d,
+        "rust-toolchain.toml",
+        "[toolchain]\nchannel = \"1.92.0\"\n",
+    );
+    assert_eq!(code(&pins(&d.0, &[])), 1);
+}
+
+// rivet: verifies REQ-008
+#[test]
+fn env_toolchain_resolution_fails_closed() {
+    let tc = |env: &str, extra: &str| {
+        format!(
+            "on: push\n{env}jobs:\n  b:\n    runs-on: x\n    steps:\n{extra}      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: ${{{{ env.RUST_VERSION }}}}\n"
+        )
+    };
+    // A run: that writes $GITHUB_ENV can set the variable at run time.
+    assert_red(
+        &tc(
+            "env:\n  RUST_VERSION: 1.92.0\n",
+            "      - run: echo RUST_VERSION=stable >> \"$GITHUB_ENV\"\n",
         ),
-        (
-            "rust-toolchain.toml",
-            "[toolchain]\nchannel = \"nightly-2026-11-01\"\n",
-            0,
+        "not a version",
+    );
+    // An env: that is an expression may define anything.
+    assert_red(
+        &format!(
+            "on: push\nenv:\n  RUST_VERSION: 1.92.0\njobs:\n  b:\n    runs-on: x\n    env: ${{{{ fromJSON(inputs.e) }}}}\n    steps:\n      - uses: dtolnay/rust-toolchain@{SHA}\n        with:\n          toolchain: ${{{{ env.RUST_VERSION }}}}\n"
         ),
-        ("rust-toolchain", "1.92.0\n", 0),
-        (
-            "rust-toolchain.toml",
-            "[toolchain]\nchannel = \"stable\"\n",
-            1,
-        ),
-        ("none", "", 1),
-    ] {
-        let d = dir("tc-file");
-        put(&d, ".github/workflows/ci.yml", &w);
-        if file != "none" {
-            put(&d, file, body);
-        }
-        assert_eq!(code(&pins(&d.0, &[])), want, "{file}: {body}");
-    }
+        "not a version",
+    );
+    // Names match case-insensitively, so a floating lower-case twin counts.
+    assert_red(
+        &tc("env:\n  RUST_VERSION: 1.92.0\n  rust_version: stable\n", ""),
+        "not a version",
+    );
+    assert_green(&tc("env:\n  RUST_VERSION: 1.92.0\n", ""));
 }

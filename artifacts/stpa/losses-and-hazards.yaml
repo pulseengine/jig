@@ -211,3 +211,30 @@ artifacts:
     links:
       - type: prevents
         target: H-7
+
+  - id: H-8
+    type: hazard
+    title: A required context never reports
+    status: draft
+    description: >
+      A required or never-skip job sits in a workflow without a merge_group
+      trigger or behind a paths filter, so its context never reports in the
+      queue (every entry stalls) or never runs on a PR that needed it.
+    fields:
+      severity: marginal
+    links:
+      - type: leads-to-loss
+        target: L-2
+      - type: leads-to-loss
+        target: L-1
+
+  - id: SC-8
+    type: system-constraint
+    title: Every required context reports on every PR and queue run
+    status: draft
+    description: >
+      Workflows holding required or never-skip jobs must trigger on
+      pull_request and merge_group without paths or branch filters.
+    links:
+      - type: prevents
+        target: H-8

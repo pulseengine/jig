@@ -173,3 +173,60 @@ artifacts:
     links:
       - type: satisfies
         target: REQ-011
+
+  - id: DD-011
+    type: design-decision
+    title: A fixed class vocabulary as a naming convention
+    status: draft
+    fields:
+      decision: >
+        baseline.yml declares the fleet vocabulary as outputs and forwards
+        sieve's values for those names; adopters name their sieve classes from
+        it. A class outside it refuses.
+      rationale: >
+        A reusable workflow's outputs are declared statically, while sieve
+        writes only the adopter's own class names (sieve-d1, 2026-11-21). A
+        convention plus refusal keeps the forwarding one-to-one without jig
+        renaming, merging or dropping a class.
+      alternatives: A single JSON classes output read with fromJSON; rejected because sieve check-workflows recognises only needs.<job>.outputs.<class>.
+    links:
+      - type: satisfies
+        target: REQ-016
+
+  - id: DD-012
+    type: design-decision
+    title: Delegate to caller aggregators instead of absorbing them
+    status: draft
+    fields:
+      decision: >
+        The verdict judges a caller aggregator's result and checks that it
+        covers its delegated jobs; it does not judge those jobs.
+      rationale: >
+        relay's Kani and Verus gates accept a skip only with a recorded reason
+        (deferred, out-of-scope) and enforce an anti-vacuity floor; a generic
+        success/skip roll-up would pass a vacuous or unexplained skip (relay,
+        2026-11-21).
+    links:
+      - type: satisfies
+        target: REQ-015
+
+  - id: DD-013
+    type: design-decision
+    title: Tools through the varve layer, plant by recorded digest
+    status: draft
+    fields:
+      decision: >
+        sieve and rivet come from the caller's varve pin (install, verify,
+        VARVE_ROOT under RUNNER_TEMP); plant from a release whose sha256 was
+        recorded once from its cosign-verified sums, until a layer carries the
+        plant release jig needs.
+      rationale: >
+        The layer is the org's consumer channel and verifies every tool
+        against its realm root (varve, sieve-d1). plant 0.2.0 in the current
+        layer lacks trusted_workflows (plant#33) and shallow_git, both
+        unreleased (plant-2a).
+    links:
+      - type: satisfies
+        target: REQ-010
+      - type: satisfies
+        target: REQ-019
