@@ -1,0 +1,172 @@
+# Design decisions (draft, 2026-11-21), from the proposal
+# "Fleet CI unification" as distilled in docs/design.md.
+artifacts:
+  - id: DD-001
+    type: design-decision
+    title: jig is a separate repository from plant
+    status: draft
+    fields:
+      decision: The baseline lives in jig and consumes plant and sieve as signed release binaries.
+      rationale: >
+        plant is the checker; keeping the decider (sieve, the baseline) and its
+        check apart means a defect in one cannot hide itself in the other.
+        plant is pre-1.0 and ships often, while the baseline is glue that
+        callers pin by SHA.
+      alternatives: Host the reusable workflows inside plant.
+    links:
+      - type: satisfies
+        target: REQ-004
+      - type: satisfies
+        target: REQ-010
+
+  - id: DD-002
+    type: design-decision
+    title: Two reusable workflows, baseline.yml and required.yml
+    status: draft
+    fields:
+      decision: The aggregator is its own reusable workflow that the caller invokes last.
+      rationale: >
+        The aggregator must `needs:` the caller's own jobs, which a job inside
+        a single called workflow cannot do. Two calls stay within the
+        reusable-workflow nesting limit.
+    links:
+      - type: satisfies
+        target: REQ-001
+      - type: satisfies
+        target: REQ-002
+
+  - id: DD-003
+    type: design-decision
+    title: One required context per repo, required / verdict
+    status: draft
+    fields:
+      decision: Protection lists required / verdict (optionally baseline / guard) instead of every job.
+      rationale: >
+        Lists of up to 22 contexts drift from the workflow; a job missing from
+        the list is never required. The completeness check moves that list
+        into the verdict, where it is checked on every run.
+    links:
+      - type: satisfies
+        target: REQ-002
+      - type: satisfies
+        target: REQ-014
+
+  - id: DD-004
+    type: design-decision
+    title: Shadow mode by default; enforce skips only behind a merge queue
+    status: draft
+    fields:
+      decision: enforce-skips defaults to false and is set true only in repos with a merge queue.
+      rationale: >
+        sieve selects everything on non-PR events, so every queue run is a full
+        run and a false skip can delay a red but never merge one. Without a
+        queue that safety net does not exist.
+    links:
+      - type: satisfies
+        target: REQ-003
+      - type: satisfies
+        target: REQ-013
+
+  - id: DD-005
+    type: design-decision
+    title: Checks are a Rust CLI that also builds as a WASI component
+    status: draft
+    fields:
+      decision: verdict, completeness and pins are subcommands of one Rust binary, jig, with a built-in self-test.
+      rationale: >
+        The org forbids new Python; a Rust binary runs on hosted and
+        self-hosted runners without an interpreter, and a wasm32-wasip2 build
+        lets our own chain build, sign and run it later.
+      alternatives: Shell and jq inside the workflow; rejected because a decision table cannot be self-tested there.
+    links:
+      - type: satisfies
+        target: REQ-001
+      - type: satisfies
+        target: REQ-005
+      - type: satisfies
+        target: REQ-008
+
+  - id: DD-006
+    type: design-decision
+    title: A job declares its class in its if, in sieve's exact form
+    status: draft
+    fields:
+      decision: A gated job's if reads needs.baseline.outputs.<class>; verdict reads the class from there.
+      rationale: >
+        One declaration serves GitHub (the skip), sieve check-workflows (the
+        map) and the verdict (the judgement), so the three cannot disagree. A
+        skipped job without a readable class is red.
+    links:
+      - type: satisfies
+        target: REQ-001
+      - type: satisfies
+        target: REQ-003
+
+  - id: DD-007
+    type: design-decision
+    title: Callers pin jig by SHA and bump through their own PR
+    status: draft
+    fields:
+      decision: Every caller references jig at a 40-hex SHA and moves it only through a bump PR and its queue, pilots first with a 48 h soak.
+      rationale: >
+        A jig defect then reaches one repo at a time and is undone by reverting
+        that repo's pin, instead of breaking the fleet at once.
+    links:
+      - type: satisfies
+        target: REQ-012
+      - type: satisfies
+        target: REQ-013
+
+  - id: DD-008
+    type: design-decision
+    title: supply checks each Cargo.lock on its own
+    status: draft
+    fields:
+      decision: >
+        For every tracked file named exactly Cargo.lock, run cargo metadata
+        --locked in its directory and the configured auditor on that lock; with
+        bazel, require lockfile_mode=error.
+      rationale: >
+        Repos carry nested workspaces and fixtures; a gate that reads only the
+        root lock passes a stale or vulnerable nested one (plant's
+        lock-*-nested controls show this). An auditor that cannot run is a
+        failure, not a skip.
+    links:
+      - type: satisfies
+        target: REQ-006
+      - type: satisfies
+        target: REQ-007
+
+  - id: DD-009
+    type: design-decision
+    title: guard is plant guard, run on the caller's and jig's workflows
+    status: draft
+    fields:
+      decision: baseline / guard runs the pinned plant guard binary; jig runs it on its own workflows too.
+      rationale: >
+        plant guard already parses workflows as YAML and carries relay's 19
+        decision tests plus 13 shapes the line parser missed; a second
+        implementation would drift. Open seam: plant guard currently rejects
+        any job that calls a reusable workflow from another repository, which
+        every jig caller does, so plant needs a rule for SHA-pinned jig calls
+        before the pilot.
+    links:
+      - type: satisfies
+        target: REQ-009
+
+  - id: DD-010
+    type: design-decision
+    title: The reusable workflows declare no secrets
+    status: draft
+    fields:
+      decision: >
+        baseline.yml and required.yml declare no secrets in workflow_call,
+        set job permissions to contents: read (actions: read only on
+        verdict), and callers never use secrets: inherit.
+      rationale: >
+        jig runs in every caller, including on fork pull requests via the
+        hosted fallback; holding no secret leaves nothing to leak, and a
+        read-only token cannot push.
+    links:
+      - type: satisfies
+        target: REQ-011

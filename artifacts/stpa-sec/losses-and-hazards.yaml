@@ -167,3 +167,56 @@ artifacts:
     links:
       - type: prevents-sec-hazard
         target: SH-5
+
+  # ---- security UCAs (controllers in artifacts/stpa/control-structure.yaml) ----
+  - id: SUCA-1
+    type: sec-uca
+    title: guard passes a workflow that sends a fork PR to self-hosted
+    status: draft
+    fields:
+      uca-type: providing
+      context: a pull_request from a fork; a runs-on shape the guard does not recognise
+      adversarial-causation: >
+        A fork author opens a pull request whose code runs in a job whose
+        runs-on selects self-hosted labels, for example through a misspelled
+        label that defeats the fallback or a pull_request_target trigger.
+      attacker-type: external-network
+    links:
+      - type: issued-by
+        target: CTRL-GUARD
+      - type: leads-to-sec-hazard
+        target: SH-1
+
+  - id: SUCA-2
+    type: sec-uca
+    title: pins passes a mutable action reference in jig
+    status: draft
+    fields:
+      uca-type: providing
+      context: a uses with a tag or branch in jig's own workflows
+      adversarial-causation: >
+        An attacker who controls an upstream action repository moves its tag to
+        malicious code, which then runs in every caller's CI through jig.
+      attacker-type: supply-chain
+    links:
+      - type: issued-by
+        target: CTRL-PINS
+      - type: leads-to-sec-hazard
+        target: SH-2
+
+  - id: SUCA-3
+    type: sec-uca
+    title: supply passes a lockfile with a known advisory
+    status: draft
+    fields:
+      uca-type: providing
+      context: a nested Cargo.lock the scan skipped, or an auditor that failed to run
+      adversarial-causation: >
+        A malicious or compromised crate version with a published advisory is
+        introduced through a dependency bump the audit did not see.
+      attacker-type: supply-chain
+    links:
+      - type: issued-by
+        target: CTRL-SUPPLY
+      - type: leads-to-sec-hazard
+        target: SH-5

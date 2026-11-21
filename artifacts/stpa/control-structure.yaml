@@ -1,0 +1,481 @@
+# STPA control structure, UCAs and controller constraints for jig
+# (draft, 2026-11-21). Derived from docs/design.md; refine once
+# baseline.yml and required.yml exist.
+artifacts:
+  # ---- controllers ----
+  - id: CTRL-CLASSIFY
+    type: controller
+    title: baseline / classify (sieve)
+    status: draft
+    description: >
+      Decides per fleet class whether the change needs the gated jobs, and
+      publishes one output per class plus run_all.
+    fields:
+      controller-type: automated
+      process-model:
+        - which paths the change touches (git diff or event)
+        - the claims in sieve.toml and the dependency graph
+        - whether the event is a pull_request and whether shadow mode is on
+
+  - id: CTRL-GUARD
+    type: controller
+    title: baseline / guard (plant guard)
+    status: draft
+    description: >
+      Rejects workflows that can route a fork pull request to a self-hosted
+      runner.
+    fields:
+      controller-type: automated
+      process-model:
+        - every runs-on and trigger in the caller's and jig's workflows
+        - the provisioned self-hosted labels (plant-guard.toml)
+
+  - id: CTRL-PINS
+    type: controller
+    title: baseline / pins
+    status: draft
+    description: Rejects unpinned action, toolchain and package references.
+    fields:
+      controller-type: automated
+      process-model:
+        - every uses, toolchain input and run script in the workflows
+
+  - id: CTRL-SUPPLY
+    type: controller
+    title: baseline / supply
+    status: draft
+    description: Enforces and audits every lockfile.
+    fields:
+      controller-type: automated
+      process-model:
+        - the set of tracked Cargo.lock files and Bazel invocations
+        - the advisory database the auditor reads
+
+  - id: CTRL-VERDICT
+    type: controller
+    title: required / verdict
+    status: draft
+    description: >
+      Turns the results of every caller job into the one required context.
+    fields:
+      controller-type: automated
+      process-model:
+        - needs JSON (result per job)
+        - the classes baseline selected, never-skip and advisory lists
+        - the caller workflow's job list and each job's class
+
+  - id: CTRL-PROTECTION
+    type: controller
+    title: GitHub branch protection and merge queue
+    status: draft
+    description: Admits a merge into main only when the required contexts pass.
+    fields:
+      controller-type: automated
+      process-model:
+        - the required-checks list of the ruleset
+        - the reported state of each required context
+
+  - id: CTRL-CALLER
+    type: controller
+    title: Caller repository maintainer (owner or agent session)
+    status: draft
+    description: Decides which jig commit the caller pins, and when it bumps.
+    fields:
+      controller-type: human-and-automated
+      process-model:
+        - the jig SHA the caller pins
+        - whether that SHA passed jig's own CI and a pilot soak
+
+  # ---- controlled processes ----
+  - id: CP-GATED
+    type: controlled-process
+    title: The caller's gated jobs
+    status: draft
+    description: build, unit_test, integration, emulator, coverage, mutation, fuzz, bench, docs.
+
+  - id: CP-MERGE
+    type: controlled-process
+    title: Merging into the caller's main
+    status: draft
+
+  - id: CP-PIN
+    type: controlled-process
+    title: The caller's uses reference to jig
+    status: draft
+
+  # ---- control actions ----
+  - id: CA-1
+    type: control-action
+    title: Select or skip a class
+    status: draft
+    fields:
+      action: classify sets needs.baseline.outputs.<class> to true or false
+    links:
+      - type: issued-by
+        target: CTRL-CLASSIFY
+      - type: acts-on
+        target: CP-GATED
+
+  - id: CA-2
+    type: control-action
+    title: Report the guard result
+    status: draft
+    fields:
+      action: guard succeeds or fails, which verdict reads through baseline's result
+    links:
+      - type: issued-by
+        target: CTRL-GUARD
+      - type: acts-on
+        target: CTRL-VERDICT
+
+  - id: CA-3
+    type: control-action
+    title: Report the pin result
+    status: draft
+    fields:
+      action: pins succeeds or fails, which verdict reads through baseline's result
+    links:
+      - type: issued-by
+        target: CTRL-PINS
+      - type: acts-on
+        target: CTRL-VERDICT
+
+  - id: CA-4
+    type: control-action
+    title: Report the supply result
+    status: draft
+    fields:
+      action: supply succeeds or fails, which verdict reads through baseline's result
+    links:
+      - type: issued-by
+        target: CTRL-SUPPLY
+      - type: acts-on
+        target: CTRL-VERDICT
+
+  - id: CA-5
+    type: control-action
+    title: Report the required context
+    status: draft
+    fields:
+      action: verdict reports required / verdict as success or failure
+    links:
+      - type: issued-by
+        target: CTRL-VERDICT
+      - type: acts-on
+        target: CTRL-PROTECTION
+
+  - id: CA-6
+    type: control-action
+    title: Admit the merge
+    status: draft
+    fields:
+      action: branch protection or the merge queue merges the change
+    links:
+      - type: issued-by
+        target: CTRL-PROTECTION
+      - type: acts-on
+        target: CP-MERGE
+
+  - id: CA-7
+    type: control-action
+    title: Bump the jig pin
+    status: draft
+    fields:
+      action: a caller PR changes the jig SHA in uses
+    links:
+      - type: issued-by
+        target: CTRL-CALLER
+      - type: acts-on
+        target: CP-PIN
+
+  # ---- unsafe control actions ----
+  - id: UCA-1
+    type: uca
+    title: verdict reports success while a needed job failed or was cancelled
+    status: draft
+    fields:
+      uca-type: providing
+      control-action: report the required context
+      context: needs is empty, or holds a failure, a cancellation or an unknown result, or baseline did not succeed
+    links:
+      - type: issued-by
+        target: CTRL-VERDICT
+      - type: leads-to-hazard
+        target: H-1
+
+  - id: UCA-2
+    type: uca
+    title: verdict reports success while a caller job is absent from needs
+    status: draft
+    fields:
+      uca-type: providing
+      control-action: report the required context
+      context: a job was added to the caller workflow and not to required's needs
+    links:
+      - type: issued-by
+        target: CTRL-VERDICT
+      - type: leads-to-hazard
+        target: H-2
+
+  - id: UCA-3
+    type: uca
+    title: verdict does not report failure for an illegitimate skip
+    status: draft
+    fields:
+      uca-type: not-providing
+      control-action: report the required context
+      context: a skipped job is never-skip, its class was selected, run_all is true, or its class cannot be read from its if
+    links:
+      - type: issued-by
+        target: CTRL-VERDICT
+      - type: leads-to-hazard
+        target: H-1
+
+  - id: UCA-4
+    type: uca
+    title: verdict reports failure for a correct change
+    status: draft
+    fields:
+      uca-type: providing
+      control-action: report the required context
+      context: a jig defect, a broken self-test row, or a tool download that failed
+    links:
+      - type: issued-by
+        target: CTRL-VERDICT
+      - type: leads-to-hazard
+        target: H-7
+
+  - id: UCA-5
+    type: uca
+    title: classify skips a class the change touches
+    status: draft
+    fields:
+      uca-type: providing
+      control-action: select or skip a class
+      context: a sieve.toml claim with dead globs, an edge the graph misses, or a stale config
+    links:
+      - type: issued-by
+        target: CTRL-CLASSIFY
+      - type: leads-to-hazard
+        target: H-3
+
+  - id: UCA-6
+    type: uca
+    title: classify skips on a non-PR event, in shadow mode or after an error
+    status: draft
+    fields:
+      uca-type: providing
+      control-action: select or skip a class
+      context: merge_group or push event, enforce-skips false, or sieve exits non-zero
+    links:
+      - type: issued-by
+        target: CTRL-CLASSIFY
+      - type: leads-to-hazard
+        target: H-3
+
+  - id: UCA-7
+    type: uca
+    title: classify stops before it writes every class output
+    status: draft
+    fields:
+      uca-type: stopped-too-soon
+      control-action: select or skip a class
+      context: timeout or kill after writing some outputs; a missing output read as false
+    links:
+      - type: issued-by
+        target: CTRL-CLASSIFY
+      - type: leads-to-hazard
+        target: H-3
+
+  - id: UCA-8
+    type: uca
+    title: guard passes a workflow that routes a fork to self-hosted
+    status: draft
+    fields:
+      uca-type: providing
+      control-action: report the guard result
+      context: a form the guard does not recognise, or no workflow scanned at all
+    links:
+      - type: issued-by
+        target: CTRL-GUARD
+      - type: leads-to-hazard
+        target: H-4
+
+  - id: UCA-9
+    type: uca
+    title: pins passes an unpinned reference
+    status: draft
+    fields:
+      uca-type: providing
+      control-action: report the pin result
+      context: a uses in a composite action, an expression, a short SHA, or no file scanned
+    links:
+      - type: issued-by
+        target: CTRL-PINS
+      - type: leads-to-hazard
+        target: H-4
+
+  - id: UCA-10
+    type: uca
+    title: supply passes a stale or unaudited lockfile
+    status: draft
+    fields:
+      uca-type: providing
+      control-action: report the supply result
+      context: a nested Cargo.lock outside the scan, or an auditor that could not run
+    links:
+      - type: issued-by
+        target: CTRL-SUPPLY
+      - type: leads-to-hazard
+        target: H-5
+
+  - id: UCA-11
+    type: uca
+    title: protection admits a merge without the verdict context
+    status: draft
+    fields:
+      uca-type: providing
+      control-action: admit the merge
+      context: the required-checks list is empty, names a context no job reports, or still names only the old contexts
+    links:
+      - type: issued-by
+        target: CTRL-PROTECTION
+      - type: leads-to-hazard
+        target: H-1
+
+  - id: UCA-12
+    type: uca
+    title: caller bumps to a jig commit too early
+    status: draft
+    fields:
+      uca-type: too-early-too-late
+      control-action: bump the jig pin
+      context: before jig's own CI is green and the pilot soak passed, or by tag or branch instead of SHA
+    links:
+      - type: issued-by
+        target: CTRL-CALLER
+      - type: leads-to-hazard
+        target: H-6
+
+  # ---- controller constraints ----
+  - id: CC-1
+    type: controller-constraint
+    title: verdict passes only on a complete, all-success needs
+    status: draft
+    fields:
+      constraint: verdict must fail on empty needs, any failure, cancellation or unknown result, and a baseline that did not succeed.
+    links:
+      - type: constrains-controller
+        target: CTRL-VERDICT
+      - type: inverts-uca
+        target: UCA-1
+      - type: prevents
+        target: H-1
+
+  - id: CC-2
+    type: controller-constraint
+    title: verdict checks needs against the caller's job list
+    status: draft
+    fields:
+      constraint: verdict must fail when a non-advisory job is missing from needs or needs names a job the workflow lacks.
+    links:
+      - type: constrains-controller
+        target: CTRL-VERDICT
+      - type: inverts-uca
+        target: UCA-2
+      - type: prevents
+        target: H-2
+
+  - id: CC-3
+    type: controller-constraint
+    title: verdict accepts a skip only for an unselected, declared class
+    status: draft
+    fields:
+      constraint: verdict must fail on a skip of a never-skip job, of a selected class, under run_all, or of a job with no readable class.
+    links:
+      - type: constrains-controller
+        target: CTRL-VERDICT
+      - type: inverts-uca
+        target: UCA-3
+      - type: prevents
+        target: H-1
+
+  - id: CC-4
+    type: controller-constraint
+    title: verdict's own failures are distinguishable and recoverable
+    status: draft
+    fields:
+      constraint: verdict must name the rule behind every failure, separate could-not-run (exit 2) from red (exit 1), and be revertible per repo by its pin.
+    links:
+      - type: constrains-controller
+        target: CTRL-VERDICT
+      - type: inverts-uca
+        target: UCA-4
+      - type: prevents
+        target: H-7
+
+  - id: CC-5
+    type: controller-constraint
+    title: classify refuses configs it cannot trust and fails closed
+    status: draft
+    fields:
+      constraint: classify must refuse a sieve.toml whose globs or paths match nothing at HEAD, and must select every class on non-PR events, in shadow mode, on any error, and when any class output is missing.
+    links:
+      - type: constrains-controller
+        target: CTRL-CLASSIFY
+      - type: inverts-uca
+        target: UCA-5
+      - type: inverts-uca
+        target: UCA-6
+      - type: inverts-uca
+        target: UCA-7
+      - type: prevents
+        target: H-3
+
+  - id: CC-6
+    type: controller-constraint
+    title: guard, pins and supply each fail on an empty scan and on their planted inputs
+    status: draft
+    fields:
+      constraint: each check must exit non-zero when it scanned nothing and when given its planted bad input.
+    links:
+      - type: constrains-controller
+        target: CTRL-PINS
+      - type: inverts-uca
+        target: UCA-8
+      - type: inverts-uca
+        target: UCA-9
+      - type: inverts-uca
+        target: UCA-10
+      - type: prevents
+        target: H-4
+      - type: prevents
+        target: H-5
+
+  - id: CC-7
+    type: controller-constraint
+    title: protection requires required / verdict
+    status: draft
+    fields:
+      constraint: the caller's ruleset must list required / verdict as a required context, and the list must never be empty.
+    links:
+      - type: constrains-controller
+        target: CTRL-PROTECTION
+      - type: inverts-uca
+        target: UCA-11
+      - type: prevents
+        target: H-1
+
+  - id: CC-8
+    type: controller-constraint
+    title: callers bump by SHA after the soak
+    status: draft
+    fields:
+      constraint: a caller must pin a 40-hex jig SHA that passed jig's CI and, outside the pilots, a 48 h pilot soak.
+    links:
+      - type: constrains-controller
+        target: CTRL-CALLER
+      - type: inverts-uca
+        target: UCA-12
+      - type: prevents
+        target: H-6

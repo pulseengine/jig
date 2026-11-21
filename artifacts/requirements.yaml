@@ -14,6 +14,10 @@ artifacts:
     links:
       - type: constraint-satisfies
         target: SC-1
+      - type: constraint-satisfies
+        target: CC-1
+      - type: constraint-satisfies
+        target: CC-3
 
   - id: REQ-002
     type: requirement
@@ -27,6 +31,8 @@ artifacts:
     links:
       - type: constraint-satisfies
         target: SC-2
+      - type: constraint-satisfies
+        target: CC-2
 
   - id: REQ-003
     type: requirement
@@ -41,6 +47,8 @@ artifacts:
     links:
       - type: constraint-satisfies
         target: SC-3
+      - type: constraint-satisfies
+        target: CC-5
 
   - id: REQ-004
     type: requirement
@@ -55,6 +63,8 @@ artifacts:
     links:
       - type: constraint-satisfies
         target: SC-4
+      - type: constraint-satisfies
+        target: CC-6
 
   - id: REQ-005
     type: requirement
@@ -166,6 +176,8 @@ artifacts:
     links:
       - type: constraint-satisfies
         target: SC-6
+      - type: constraint-satisfies
+        target: CC-8
 
   - id: REQ-013
     type: requirement
@@ -180,3 +192,21 @@ artifacts:
     links:
       - type: constraint-satisfies
         target: SC-7
+      - type: constraint-satisfies
+        target: CC-4
+
+  - id: REQ-014
+    type: requirement
+    title: The verdict is the required context
+    status: draft
+    description: >
+      A caller adopting jig in enforce mode shall list required / verdict as a
+      required context in its ruleset, and jig's rollout check shall fail when
+      a caller's required-checks list is empty or omits it.
+    release: v0.1.0
+    fields: {priority: must, category: interface}
+    links:
+      - type: constraint-satisfies
+        target: SC-1
+      - type: constraint-satisfies
+        target: CC-7
