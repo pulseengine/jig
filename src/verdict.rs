@@ -119,6 +119,9 @@ pub fn parse_needs(text: &str) -> Result<Needs, String> {
 pub struct Workflow {
     pub jobs: BTreeMap<String, Option<String>>,
     pub needs: BTreeMap<String, Vec<String>>,
+    /// Jobs with a job-level `continue-on-error` other than a literal
+    /// `false`: their result reads success even when they fail.
+    pub continue_on_error: BTreeSet<String>,
 }
 
 pub fn parse_workflow(text: &str) -> Result<Workflow, String> {
@@ -131,6 +134,7 @@ pub fn parse_workflow(text: &str) -> Result<Workflow, String> {
     }
     let mut jobs = BTreeMap::new();
     let mut needs = BTreeMap::new();
+    let mut continue_on_error = BTreeSet::new();
     for e in entries {
         let Node::Map { .. } = &e.value else {
             return Err(format!("workflow job '{}' is not a mapping", e.key));
@@ -155,10 +159,21 @@ pub fn parse_workflow(text: &str) -> Result<Workflow, String> {
                 return Err(format!("workflow job '{}' has a mapping needs:", e.key));
             }
         };
+        match e.value.get("continue-on-error") {
+            None => {}
+            Some(Node::Scalar { value, .. }) if value == "false" => {}
+            Some(_) => {
+                continue_on_error.insert(e.key.clone());
+            }
+        }
         jobs.insert(e.key.clone(), cond);
         needs.insert(e.key.clone(), job_needs);
     }
-    Ok(Workflow { jobs, needs })
+    Ok(Workflow {
+        jobs,
+        needs,
+        continue_on_error,
+    })
 }
 
 /// Class names a job's `if:` reads as `needs.<classifier>.outputs.<class>`.
@@ -280,6 +295,15 @@ pub fn judge(needs: &Needs, wf: &Workflow, o: &Opts) -> Vec<String> {
         {
             r.push(format!(
                 "job '{id}' is in the workflow but missing from needs"
+            ));
+        }
+    }
+    // A continue-on-error job reports success when it fails, so only the
+    // advisory list may hold it (REQ-021).
+    for id in &wf.continue_on_error {
+        if *id != o.self_job && !o.advisory.contains(id) {
+            r.push(format!(
+                "job '{id}' has continue-on-error, so its result reads success even when it fails; list it in advisory"
             ));
         }
     }
@@ -701,7 +725,76 @@ pub fn table() -> Vec<Row> {
     rows.push(bad_wf("workflow that is not YAML", "jobs: [unclosed\n"));
     rows.extend(classifier_rows());
     rows.extend(delegation_rows());
+    rows.extend(canary_rows());
     rows
+}
+
+/// The fixture with `clippy` as a continue-on-error job (an advisory canary
+/// on a floating toolchain): its result reads success even when it fails.
+fn workflow_canary(coe: &str) -> String {
+    WORKFLOW.replace(
+        "  clippy:\n    runs-on: ubuntu-24.04\n",
+        &format!("  clippy:\n    continue-on-error: {coe}\n    runs-on: ubuntu-24.04\n"),
+    )
+}
+
+/// Continue-on-error rows (REQ-021): such a job may only be advisory.
+fn canary_rows() -> Vec<Row> {
+    let r = |name, coe: &str, advisory: &[&'static str], expect| Row {
+        name,
+        needs: nj("success", OUTS_NONE, &OK),
+        workflow: workflow_canary(coe),
+        never_skip: vec![],
+        advisory: advisory.to_vec(),
+        delegated: vec![],
+        classifier: None,
+        expect,
+    };
+    vec![
+        r(
+            "continue-on-error job outside the advisory list",
+            "true",
+            &[],
+            Expect::Red("job 'clippy' has continue-on-error"),
+        ),
+        r(
+            "continue-on-error from an expression, not advisory",
+            "${{ matrix.experimental }}",
+            &[],
+            Expect::Red("job 'clippy' has continue-on-error"),
+        ),
+        r(
+            "continue-on-error job listed as advisory",
+            "true",
+            &["clippy"],
+            Expect::Green,
+        ),
+        r(
+            "continue-on-error: false is an ordinary job",
+            "false",
+            &[],
+            Expect::Green,
+        ),
+        // The canary is absent from needs: only the parsed workflow shows it.
+        Row {
+            needs: nj("success", OUTS_NONE, &OK[..3]),
+            ..r(
+                "continue-on-error job absent from needs, not advisory",
+                "true",
+                &[],
+                Expect::Red("job 'clippy' has continue-on-error"),
+            )
+        },
+        Row {
+            needs: nj("success", OUTS_NONE, &OK[..3]),
+            ..r(
+                "continue-on-error job absent from needs, advisory",
+                "true",
+                &["clippy"],
+                Expect::Green,
+            )
+        },
+    ]
 }
 
 /// Classifier-job rows: the class outputs come from the caller's own

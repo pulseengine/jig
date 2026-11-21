@@ -42,6 +42,47 @@ pub struct Report {
     pub violations: Vec<Violation>,
     /// Local `uses: ./path` references: (line, document path, value).
     pub local: Vec<(usize, String, String)>,
+    /// Jobs accepted as advisory canaries on `toolchain: stable` (REQ-021).
+    pub canaries: Vec<String>,
+}
+
+/// Jobs that may run an advisory canary on `toolchain: stable`: the job
+/// itself sets `continue-on-error: true` (literally) and no other job lists
+/// it in `needs:` except the job that calls jig's required.yml, so nothing
+/// it builds flows anywhere. `jig verdict` then requires the job to be in
+/// its advisory list.
+fn canary_jobs(root: &Node) -> BTreeSet<String> {
+    let Some(Node::Map { entries, .. }) = root.get("jobs") else {
+        return BTreeSet::new();
+    };
+    // The job calling jig's required.yml must need every job (REQ-017); it
+    // only reads results, so its needs do not count.
+    let is_verdict = |n: &Node| {
+        n.get("uses").and_then(Node::as_str).is_some_and(|u| {
+            u.starts_with("pulseengine/jig/.github/workflows/required.yml@")
+                || u == "./.github/workflows/required.yml"
+        })
+    };
+    let needed: BTreeSet<&str> = entries
+        .iter()
+        .filter(|e| !is_verdict(&e.value))
+        .flat_map(|e| match e.value.get("needs") {
+            Some(Node::Scalar { value, .. }) => vec![value.as_str()],
+            Some(Node::Seq { items, .. }) => items.iter().filter_map(Node::as_str).collect(),
+            _ => Vec::new(),
+        })
+        .collect();
+    entries
+        .iter()
+        .filter(|e| e.value.get("continue-on-error").and_then(Node::as_str) == Some("true"))
+        .filter(|e| !needed.contains(e.key.as_str()))
+        .map(|e| e.key.clone())
+        .collect()
+}
+
+/// The job a document path is inside: `jobs.<id>.steps[0]` gives `<id>`.
+fn job_of(path: &str) -> Option<&str> {
+    path.strip_prefix("jobs.")?.split(['.', '[']).next()
 }
 
 fn hex_lower(s: &str, n: usize) -> bool {
@@ -249,6 +290,7 @@ fn unhashed_pip(run: &str) -> Vec<usize> {
 struct Walker<'a> {
     file: &'a str,
     report: Report,
+    canary_ok: BTreeSet<String>,
 }
 
 impl Walker<'_> {
@@ -338,7 +380,14 @@ impl Walker<'_> {
                     .into(),
             ),
             Some(Node::Scalar { value, line }) => {
-                if !is_toolchain_version(value) {
+                let job = job_of(path).filter(|j| self.canary_ok.contains(*j));
+                if value == "stable"
+                    && let Some(j) = job
+                {
+                    if !self.report.canaries.iter().any(|c| c == j) {
+                        self.report.canaries.push(j.to_string());
+                    }
+                } else if !is_toolchain_version(value) {
                     self.add(
                         *line,
                         path,
@@ -357,6 +406,7 @@ pub fn check_text(file: &str, text: &str) -> Report {
         Err(e) => Report {
             uses: 0,
             local: Vec::new(),
+            canaries: Vec::new(),
             violations: vec![Violation {
                 file: file.to_string(),
                 line: None,
@@ -368,6 +418,7 @@ pub fn check_text(file: &str, text: &str) -> Report {
             let mut w = Walker {
                 file,
                 report: Report::default(),
+                canary_ok: canary_jobs(&root),
             };
             w.walk(&root, "");
             w.report
@@ -429,6 +480,8 @@ pub struct DirReport {
     pub files: usize,
     pub uses: usize,
     pub violations: Vec<Violation>,
+    /// Advisory canaries accepted: (file, job).
+    pub canaries: Vec<(String, String)>,
 }
 
 /// Scan a directory. `Err` means the scan could not run (exit 2).
@@ -439,12 +492,15 @@ pub fn check_dir(root: &Path) -> Result<DirReport, String> {
         files: files.len(),
         uses: 0,
         violations: Vec::new(),
+        canaries: Vec::new(),
     };
     for f in files {
         let name = shown(root, &f);
         let text = fs::read_to_string(&f).map_err(|e| format!("cannot read {name}: {e}"))?;
         let r = check_text(&name, &text);
         rep.uses += r.uses;
+        rep.canaries
+            .extend(r.canaries.into_iter().map(|j| (name.clone(), j)));
         rep.violations.extend(r.violations);
         for (line, path, value) in r.local {
             if let Some(why) = unscanned_local(&value, &scanned) {

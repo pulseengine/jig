@@ -318,3 +318,25 @@ artifacts:
     links:
       - type: constraint-satisfies
         target: SC-6
+
+  - id: REQ-021
+    type: requirement
+    title: An advisory stable canary is explicit and cannot be required
+    status: draft
+    description: >
+      pins shall accept toolchain stable only in a job that sets
+      continue-on-error true literally and that no other job lists in its
+      needs except the job calling jig's required.yml, and shall print each such job as an advisory canary. The verdict
+      shall fail when a job with continue-on-error other than false is not
+      in its advisory list. Every other floating toolchain stays red
+      (owner, 2026-11-21: exact Rust versions plus one advisory stable
+      canary per repo).
+    release: v0.1.1
+    fields: {priority: must, category: functional}
+    links:
+      - type: satisfies
+        target: SSC-2
+      - type: constraint-satisfies
+        target: SC-1
+      - type: refines
+        target: REQ-008
