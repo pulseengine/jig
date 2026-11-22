@@ -67,3 +67,10 @@ check = "aggregator: always-green stand-in"
 run = '"$JIG" verdict --self-test'
 plant = "ci-controls/required-canary-not-advisory"
 stderr_or_stdout_matches = '.'
+
+[[control]]
+id = "stand-in-supply-npm-advisory"
+check = "supply: a supply job that skips package-lock.json"
+run = 'echo "0 package-lock.json file(s) checked"'
+plant = "ci-controls/supply-npm-advisory"
+stderr_or_stdout_matches = '.'

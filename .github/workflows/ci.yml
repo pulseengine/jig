@@ -130,6 +130,11 @@ jobs:
           echo "$PLANT_SHA256  $p" | sha256sum -c -
           tar -xzf "$p" ./plant
           echo "$d" >> "$GITHUB_PATH"
+      # supply-npm-advisory needs npm; the same pin and version as baseline.yml's
+      # supply, so a light pool without node turns the control red.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26.13.1
       # Each control plants one bad input; only exit 0 (every control PASS)
       # is green. A dedicated target dir, never this repo's target/.
       - name: plant controls

@@ -280,3 +280,29 @@ artifacts:
         target: REQ-021
       - type: satisfies
         target: REQ-017
+
+  - id: DD-016
+    type: design-decision
+    title: supply installs node itself, and jig's tree carries an npm fixture
+    status: draft
+    fields:
+      decision: >
+        supply runs a SHA-pinned actions/setup-node with an exact node
+        version when the tree has a package-lock.json, and stops with "npm
+        unavailable" if npm is still missing. jig tracks a clean fixture lock
+        (ci-controls/fixtures/npm), so its own baseline supply runs the npm
+        path on the light pool. The supply-npm-advisory control plants a
+        minimist 1.2.5 lock and runs the same text as the workflow step
+        (tests/supply.rs keeps them equal).
+      rationale: >
+        The light pool has no node, so supply exited 127 on the first caller
+        with a package-lock.json (warte#194). jig had no lockfile, so the npm
+        branch never ran in its own CI. The planted lock is stored as
+        package-lock.json.planted, because supply would otherwise audit it in
+        jig's own tree. Skipping npm when it is absent was rejected: a lock
+        that is never audited is a silent pass.
+    links:
+      - type: satisfies
+        target: REQ-006
+      - type: satisfies
+        target: REQ-007
