@@ -167,17 +167,34 @@ with a queue, so `enforce-skips` stays false until a repo has one.
 - **Phase 1, shadow** (2 weeks or 100 queue runs, whichever is later):
   baseline and required run beside existing jobs, everything runs, the old
   required contexts stay. Pilots: warte (cargo-only, correctness pilot, about
-  0 minutes saved), then relay (Bazel plus 4 provers, existing queue).
+  0 minutes saved; shadow since warte#194, b8ece52, 2026-11-22), then relay
+  (Bazel plus 4 provers, existing queue). Before relay starts, required.yml
+  uploads each run's needs JSON (classify outputs and every job's result)
+  with the head SHA as a 90-day artifact, so every pilot records the same
+  evidence; a plant control proves the record is written.
 - **Phase 2, enforce**: relay sets `enforce-skips: true` and moves protection
   to `required / verdict`, old contexts kept one more week. warte gets a queue
   before it enforces.
 - **Phase 3**: the queue repos, then the largest code-only repos, then the
   rest; the Bazel rules repos last.
 
-Success criteria: runner-minutes per PR run and per merged PR (2 weeks before
-vs after, per pool); queue wait p50/p90; sieve misses 0 of at least 200
-compared skipped jobs per pilot; every plant control PASS and every stand-in
-FAIL-OPEN.
+Success criteria (owner, 2026-11-22):
+
+- every pilot: guard, pins, supply, controls and the verdict green and
+  correct for 2 weeks or 100 runs, whichever is later; every plant control
+  PASS and every stand-in FAIL-OPEN; runner-minutes per PR run and per merged
+  PR (2 weeks before vs after, per pool); queue wait p50/p90 (runner wait on
+  a repo without a merge queue);
+- relay only: sieve misses 0 of at least 200 compared skipped jobs.
+
+warte proves correctness only, because sieve skips nothing there. A replay
+of sieve v0.3.0 with warte's sieve.toml at b8ece52 over its last 80 merged
+PRs (2026-11-04 to 2026-11-22, the files of each squash commit, event
+pull_request) gave 53 run_all, 27 with all three classes selected, and 0
+would-skip jobs: every class lists the root Cargo.toml, which claims every
+file, and the binary embeds docs/, templates/ and migrations/. The replay
+used today's config and tree for older diffs, one classification per PR (not
+per push), and no merge_group or push runs.
 
 Rollback: revert the `uses:` SHA per repo; fleet-wide, `enforce-skips: false`
 or a repo variable whose default fails closed to run everything.
