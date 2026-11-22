@@ -61,8 +61,8 @@ defaults:
 
 env:
   # Set by the commit that follows each signed jig release (docs/releasing.md).
-  JIG_VERSION: v0.1.3
-  JIG_SHA256: daf5d5ffbd532b8c27355d7011303e64f0b5e5138496c3e931525afdd3e547dd
+  JIG_VERSION: v0.1.4
+  JIG_SHA256: 3ceb9ead350265d3c8d24bc7c2013466744a01bb32a54fb7b6764fec949fac45
 
 jobs:
   verdict:

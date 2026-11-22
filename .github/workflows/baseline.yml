@@ -56,11 +56,11 @@ defaults:
 
 env:
   # jig itself: set by the commit that follows each signed jig release
-  # (docs/releasing.md). v0.1.3: sha256 of the x86_64 musl archive from
-  # SHA256SUMS.txt, verified with cosign against release.yml@refs/tags/v0.1.3
+  # (docs/releasing.md). v0.1.4: sha256 of the x86_64 musl archive from
+  # SHA256SUMS.txt, verified with cosign against release.yml@refs/tags/v0.1.4
   # on 2026-11-22.
-  JIG_VERSION: v0.1.3
-  JIG_SHA256: daf5d5ffbd532b8c27355d7011303e64f0b5e5138496c3e931525afdd3e547dd
+  JIG_VERSION: v0.1.4
+  JIG_SHA256: 3ceb9ead350265d3c8d24bc7c2013466744a01bb32a54fb7b6764fec949fac45
   # plant v0.4.0 (carries plant#34, trusted_workflows), x86_64-unknown-linux-musl,
   # from SHA256SUMS.txt verified with cosign against
   # release.yml@refs/tags/v0.4.0 on 2026-11-21.
