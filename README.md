@@ -80,6 +80,9 @@ jobs:
   `advisory`. `jig pins` prints it as an advisory
   canary, and the verdict refuses any continue-on-error job outside
   `advisory`.
+- The caller grants `permissions: contents: read` at the top (or
+  `read-all`, or only read/none scopes); `jig caller` is red on a missing
+  block or any write scope there.
 - A job judged by the caller's own aggregator (for example a Kani gate over a
   matrix) is passed as `delegated: "kani-x86=kani-gate"`; the aggregator must
   be never-skip and list the job in its `needs`.

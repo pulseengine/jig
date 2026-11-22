@@ -340,3 +340,20 @@ artifacts:
         target: SC-1
       - type: refines
         target: REQ-008
+
+  - id: REQ-022
+    type: requirement
+    title: The caller's workflow token is read-only
+    status: draft
+    description: >
+      jig caller shall fail a caller workflow without a top-level
+      permissions block, with permissions write-all or any value other than
+      read-all, or with a top-level scope other than read or none. Job-level
+      permissions are not judged.
+    release: v0.1.2
+    fields: {priority: must, category: functional}
+    links:
+      - type: satisfies
+        target: SSC-4
+      - type: refines
+        target: REQ-017

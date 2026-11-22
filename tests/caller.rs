@@ -44,6 +44,8 @@ fn wf(on: &str, req_if: &str, req_needs: &str, base_uses: &str, req_uses: &str) 
         "\
 name: CI
 {on}
+permissions:
+  contents: read
 jobs:
   baseline:
     uses: {base_uses}
@@ -407,4 +409,66 @@ fn local_calls_pass_only_with_allow_local_and_never_mixed() {
         lr,
     );
     assert_eq!(code(&caller(&d, &other, &["--allow-local"])), 1);
+}
+
+/// good() with its `permissions:` block replaced (`None` drops it).
+fn with_perms(perms: Option<&str>) -> String {
+    let g = good();
+    let block = "permissions:\n  contents: read\n";
+    assert!(g.contains(block));
+    g.replace(block, &perms.map_or(String::new(), |p| format!("{p}\n")))
+}
+
+// rivet: verifies REQ-022
+#[test]
+fn workflow_permissions_must_be_read_only() {
+    let d = dir("perms");
+    for p in [
+        "permissions: read-all",
+        "permissions: {}",
+        "permissions:\n  contents: read\n  pull-requests: read",
+        "permissions:\n  contents: read\n  id-token: none",
+    ] {
+        let o = caller(&d, &with_perms(Some(p)), &[]);
+        assert_eq!(code(&o), 0, "{p}\n{}", stdout(&o));
+    }
+    assert_red(&d, &with_perms(None), "no top-level permissions:");
+    assert_red(
+        &d,
+        &with_perms(Some("permissions: write-all")),
+        "permissions: is 'write-all'",
+    );
+    assert_red(
+        &d,
+        &with_perms(Some("permissions: ${{ inputs.p }}")),
+        "permissions: is '${{ inputs.p }}'",
+    );
+    assert_red(
+        &d,
+        &with_perms(Some("permissions:\n  contents: write")),
+        "permissions.contents is 'write'",
+    );
+    assert_red(
+        &d,
+        &with_perms(Some("permissions:\n  contents: read\n  id-token: write")),
+        "permissions.id-token is 'write'",
+    );
+    assert_red(
+        &d,
+        &with_perms(Some("permissions:\n  - contents")),
+        "permissions: is a sequence",
+    );
+}
+
+// rivet: verifies REQ-022
+#[test]
+fn job_level_permissions_are_not_judged() {
+    // Documented blind spot: a job may still widen its own token.
+    let d = dir("jobperms");
+    let w = good().replace(
+        "  lint:\n    runs-on: x\n",
+        "  lint:\n    runs-on: x\n    permissions:\n      contents: write\n",
+    );
+    assert_ne!(w, good());
+    assert_eq!(code(&caller(&d, &w, &[])), 0);
 }

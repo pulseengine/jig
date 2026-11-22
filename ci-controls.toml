@@ -79,6 +79,20 @@ plant = "ci-controls/caller-paths-filter"
 stderr_or_stdout_matches = 'paths'
 
 [[control]]
+id = "caller-no-permissions"
+check = "aggregator: required / verdict"
+run = '"$JIG" caller --workflow ci-controls/fixtures/caller.yml'
+plant = "ci-controls/caller-no-permissions"
+stderr_or_stdout_matches = 'no top-level permissions:'
+
+[[control]]
+id = "caller-write-all"
+check = "aggregator: required / verdict"
+run = '"$JIG" caller --workflow ci-controls/fixtures/caller.yml'
+plant = "ci-controls/caller-write-all"
+stderr_or_stdout_matches = "permissions: is .write-all."
+
+[[control]]
 id = "caller-no-merge-group"
 check = "aggregator: required / verdict"
 run = '"$JIG" caller --workflow ci-controls/fixtures/caller.yml'

@@ -74,3 +74,18 @@ check = "supply: a supply job that skips package-lock.json"
 run = 'echo "0 package-lock.json file(s) checked"'
 plant = "ci-controls/supply-npm-advisory"
 stderr_or_stdout_matches = '.'
+
+# An always-green caller check: it prints the caller docs, never the workflow.
+[[control]]
+id = "stand-in-caller-no-permissions"
+check = "caller: always-green stand-in"
+run = '"$JIG" docs caller'
+plant = "ci-controls/caller-no-permissions"
+stderr_or_stdout_matches = '.'
+
+[[control]]
+id = "stand-in-caller-write-all"
+check = "caller: always-green stand-in"
+run = '"$JIG" docs caller'
+plant = "ci-controls/caller-write-all"
+stderr_or_stdout_matches = '.'
