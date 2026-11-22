@@ -4,6 +4,6 @@
   "private": true,
   "description": "jig supply fixture: one exact dependency, for the npm lockfile check",
   "dependencies": {
-    "minimist": "1.2.5"
+    "minimist": "1.2.6"
   }
 }
