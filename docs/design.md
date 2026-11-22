@@ -168,10 +168,12 @@ with a queue, so `enforce-skips` stays false until a repo has one.
   baseline and required run beside existing jobs, everything runs, the old
   required contexts stay. Pilots: warte (cargo-only, correctness pilot, about
   0 minutes saved; shadow since warte#194, b8ece52, 2026-11-22), then relay
-  (Bazel plus 4 provers, existing queue). Before relay starts, required.yml
-  uploads each run's needs JSON (classify outputs and every job's result)
-  with the head SHA as a 90-day artifact, so every pilot records the same
-  evidence; a plant control proves the record is written.
+  (Bazel plus 4 provers, existing queue). required.yml uploads each run's
+  record (jig verdict --record: the needs JSON with the classifier's outputs
+  and every job's result, the verdict and the head SHA) as a 90-day artifact,
+  so every pilot records the same evidence (REQ-023); a verdict whose record
+  cannot be written is red, which the required-record-unwritable control
+  proves.
 - **Phase 2, enforce**: relay sets `enforce-skips: true` and moves protection
   to `required / verdict`, old contexts kept one more week. warte gets a queue
   before it enforces.

@@ -89,3 +89,11 @@ check = "caller: always-green stand-in"
 run = '"$JIG" docs caller'
 plant = "ci-controls/caller-write-all"
 stderr_or_stdout_matches = '.'
+
+# A verdict that writes no record cannot notice an unwritable record path.
+[[control]]
+id = "stand-in-required-record-unwritable"
+check = "aggregator: verdict without --record"
+run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-controls/fixtures/caller.yml --never-skip clippy'
+plant = "ci-controls/required-record-unwritable"
+stderr_or_stdout_matches = '.'

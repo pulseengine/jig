@@ -52,6 +52,10 @@ enum Cmd {
         /// `<job>=<aggregator>` pairs: the aggregator judges the job (space or comma separated; repeatable).
         #[arg(long)]
         delegated: Vec<String>,
+        /// Also write a JSON record of this run (needs, verdict, reasons, options,
+        /// GitHub context) to this file; a record that cannot be written is exit 2.
+        #[arg(long)]
+        record: Option<PathBuf>,
         /// Run only the built-in decision table.
         #[arg(long)]
         self_test: bool,
@@ -100,6 +104,7 @@ fn main() -> ExitCode {
             never_skip,
             advisory,
             delegated,
+            record,
             self_test,
         } => {
             let delegated = match verdict::parse_delegated(&delegated) {
@@ -120,6 +125,7 @@ fn main() -> ExitCode {
                 workflow.as_deref(),
                 &opts,
                 self_test,
+                record.as_deref(),
             )
         }
         Cmd::Pins { dir } => run_pins(cli.format, &dir),
@@ -180,7 +186,74 @@ fn run_verdict(
     workflow: Option<&Path>,
     opts: &verdict::Opts,
     self_test_only: bool,
+    record: Option<&Path>,
 ) -> u8 {
+    let code = judge_verdict(f, needs, workflow, opts, self_test_only, record);
+    let Some(path) = record else {
+        return code.0;
+    };
+    let needs_text = needs.and_then(|p| fs::read_to_string(p).ok());
+    match write_record(path, &code, needs_text.as_deref(), opts) {
+        Ok(()) => code.0,
+        Err(e) => could_not_run(f, &e),
+    }
+}
+
+/// Exit code, verdict word and reasons, for the record.
+type Judged = (u8, &'static str, Vec<String>);
+
+/// One JSON record of a verdict run (REQ-023): what sieve selected, every
+/// job's result, the verdict and the GitHub context, for the shadow-phase
+/// evidence. Absent context variables are recorded as null.
+fn write_record(
+    path: &Path,
+    judged: &Judged,
+    needs_text: Option<&str>,
+    opts: &verdict::Opts,
+) -> Result<(), String> {
+    let env = |k: &str| std::env::var(k).ok();
+    let needs = needs_text.map(|t| {
+        serde_json::from_str::<serde_json::Value>(t)
+            .unwrap_or_else(|_| serde_json::Value::String(t.to_string()))
+    });
+    let rec = json!({
+        "schema": "jig.record.v1",
+        "jig": env!("CARGO_PKG_VERSION"),
+        "verdict": judged.1,
+        "exit": judged.0,
+        "reasons": judged.2,
+        "needs": needs,
+        "options": {
+            "self_job": opts.self_job,
+            "baseline_job": opts.baseline_job,
+            "classifier_job": opts.classifier_job,
+            "never_skip": opts.never_skip,
+            "advisory": opts.advisory,
+            "delegated": opts.delegated,
+        },
+        "github": {
+            "repository": env("GITHUB_REPOSITORY"),
+            "workflow_ref": env("GITHUB_WORKFLOW_REF"),
+            "event": env("GITHUB_EVENT_NAME"),
+            "ref": env("GITHUB_REF"),
+            "sha": env("GITHUB_SHA"),
+            "head_sha": env("JIG_HEAD_SHA"),
+            "run_id": env("GITHUB_RUN_ID"),
+            "run_attempt": env("GITHUB_RUN_ATTEMPT"),
+        },
+    });
+    let text = serde_json::to_string_pretty(&rec).map_err(|e| e.to_string())? + "\n";
+    fs::write(path, text).map_err(|e| format!("cannot write record {}: {e}", path.display()))
+}
+
+fn judge_verdict(
+    f: Format,
+    needs: Option<&Path>,
+    workflow: Option<&Path>,
+    opts: &verdict::Opts,
+    self_test_only: bool,
+    record: Option<&Path>,
+) -> Judged {
     // The table runs first, always, before the input is looked at.
     let rows = match verdict::self_test() {
         Ok(n) => n,
@@ -190,22 +263,24 @@ fn run_verdict(
                 .map(|n| format!("self-test row {n} disagrees"))
                 .collect();
             report(f, "red", &lines);
-            return FAIL;
+            return (FAIL, "red", lines);
         }
     };
+    if self_test_only && record.is_some() {
+        let e = "--record needs --needs and --workflow, not --self-test".to_string();
+        return (could_not_run(f, &e), "error", vec![e]);
+    }
     if self_test_only {
         if f == Format::Json {
             println!("{}", json!({"verdict": "green", "self_test_rows": rows}));
         } else {
             println!("self-test: {rows} rows agree");
         }
-        return PASS;
+        return (PASS, "green", Vec::new());
     }
     let (Some(needs), Some(workflow)) = (needs, workflow) else {
-        return could_not_run(
-            f,
-            "--needs and --workflow are required (or use --self-test)",
-        );
+        let e = "--needs and --workflow are required (or use --self-test)".to_string();
+        return (could_not_run(f, &e), "error", vec![e]);
     };
     let parsed = read(needs)
         .and_then(|t| verdict::parse_needs(&t))
@@ -215,15 +290,15 @@ fn run_verdict(
         });
     let (n, wf) = match parsed {
         Ok(x) => x,
-        Err(e) => return could_not_run(f, &e),
+        Err(e) => return (could_not_run(f, &e), "error", vec![e]),
     };
     let reasons = verdict::judge(&n, &wf, opts);
     if reasons.is_empty() {
         report(f, "green", &[]);
-        PASS
+        (PASS, "green", reasons)
     } else {
         report(f, "red", &reasons);
-        FAIL
+        (FAIL, "red", reasons)
     }
 }
 
