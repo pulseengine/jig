@@ -377,3 +377,24 @@ artifacts:
         target: SC-4
       - type: refines
         target: REQ-001
+
+  - id: REQ-024
+    type: requirement
+    title: One verdict per workflow, with the baseline judged once
+    status: draft
+    description: >
+      required.yml shall take the calling job's id (self-job) and the
+      baseline job's id (baseline-job), so a repository whose gates span
+      several workflows can call it once per workflow under distinct job ids.
+      An empty baseline-job shall judge no baseline, jig caller shall then
+      print that another required verdict must judge it, and shall fail if a
+      job in that workflow calls baseline.yml. Whether some required verdict
+      hosts the baseline is checked outside jig, over the required contexts
+      (temper#106).
+    release: v0.1.4
+    fields: {priority: must, category: functional}
+    links:
+      - type: refines
+        target: REQ-017
+      - type: constraint-satisfies
+        target: SC-2

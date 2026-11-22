@@ -1,0 +1,35 @@
+# A caller workflow that hosts no baseline (REQ-024): its verdict job is
+# required-kani and passes baseline-job "", because another required verdict
+# judges the baseline. Planted copies turn jig caller and jig verdict red.
+on:
+  pull_request:
+  merge_group:
+permissions:
+  contents: read
+jobs:
+  classify:
+    runs-on: ubuntu-24.04
+    outputs:
+      run_all: ${{ steps.classify.outputs.run_all }}
+      build: ${{ steps.classify.outputs.build }}
+    steps:
+      - id: classify
+        run: echo "sieve classify would run here"
+  build:
+    needs: classify
+    if: ${{ !cancelled() && (needs.classify.result != 'success' || needs.classify.outputs.build != 'false') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo build
+  clippy:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo clippy
+  required-kani:
+    needs: [classify, build, clippy]
+    if: always()
+    uses: pulseengine/jig/.github/workflows/required.yml@0123456789abcdef0123456789abcdef01234567
+    with:
+      needs-json: ${{ toJSON(needs) }}
+      baseline-job: ""
+      self-job: required-kani

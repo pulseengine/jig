@@ -15,7 +15,8 @@ always runs first; a disagreeing row is exit 1 (\"self-test row N disagrees\").
 
 Red (exit 1), one reason line each, if:
   - needs is empty;
-  - the baseline job is absent or not success;
+  - the baseline job is absent or not success (with --baseline-job \"\" no
+    baseline is judged: another required verdict must judge it, REQ-024);
   - a non-advisory job failed or was cancelled;
   - any result is not success/failure/cancelled/skipped;
   - a non-advisory job was skipped and it is never-skip, run_all is true, its
@@ -119,6 +120,13 @@ Red (exit 1), one reason line each, if:
     SHAs differ;
   - the workflow has no top-level permissions:, has one other than read-all
     (write-all, an expression), or a scope other than read or none (REQ-022).
+
+--baseline-job \"\" (REQ-024): this workflow hosts no baseline, because its
+verdict is one of several (one per workflow) and another required verdict
+judges the baseline. jig caller then prints a note saying so, and is red if
+any job here calls baseline.yml. It cannot see the other workflows: whether
+some required verdict hosts the baseline is checked by temper (temper#106)
+over the repository's required contexts.
 
 Blind to: job-level permissions: a job may still widen its own token.
 

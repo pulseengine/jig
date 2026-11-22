@@ -292,6 +292,9 @@ fn judge_verdict(
         Ok(x) => x,
         Err(e) => return (could_not_run(f, &e), "error", vec![e]),
     };
+    if opts.baseline_job.is_empty() && f == Format::Text {
+        println!("{}", caller::no_baseline_note(&opts.self_job));
+    }
     let reasons = verdict::judge(&n, &wf, opts);
     if reasons.is_empty() {
         report(f, "green", &[]);
@@ -321,6 +324,9 @@ fn report_as(f: Format, label: &str, verdict: &str, reasons: &[String]) {
 }
 
 fn run_caller(f: Format, workflow: &Path, opts: &caller::Opts) -> u8 {
+    if opts.baseline_job.is_empty() && f == Format::Text {
+        println!("{}", caller::no_baseline_note(&opts.required_job));
+    }
     let reasons = match read(workflow).and_then(|t| caller::check(&t, opts)) {
         Ok(r) => r,
         Err(e) => return could_not_run(f, &e),

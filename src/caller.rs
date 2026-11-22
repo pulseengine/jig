@@ -218,6 +218,46 @@ pub fn check(text: &str, o: &Opts) -> Result<Vec<String>, String> {
         }
     }
 
+    // An empty baseline job: this workflow hosts no baseline (REQ-024). It is
+    // red if a job here calls baseline.yml anyway, since that baseline would
+    // then be judged by no verdict.
+    if base.is_empty() {
+        for e in jobs {
+            if let Some(u) = e.value.get("uses").and_then(Node::as_str)
+                && (u.contains("/.github/workflows/baseline.yml@")
+                    || u == "./.github/workflows/baseline.yml")
+            {
+                r.push(format!(
+                    "job '{}' calls baseline.yml but baseline-job is empty; name it as the baseline job",
+                    e.key
+                ));
+            }
+        }
+    } else {
+        check_baseline(jobs, base, o, &mut shas, &mut r);
+    }
+    if let [(a, sa), (b, sb)] = shas[..]
+        && sa != sb
+    {
+        r.push(format!("jobs '{a}' and '{b}' are pinned to different SHAs"));
+    }
+    Ok(r)
+}
+
+/// The line jig prints when a workflow hosts no baseline (REQ-024).
+pub fn no_baseline_note(required_job: &str) -> String {
+    format!(
+        "note: this workflow hosts no baseline (baseline-job is empty); job '{required_job}' must not be the only required verdict: another required verdict, in the workflow that calls baseline.yml, must judge it (temper#106 checks the required contexts)"
+    )
+}
+
+fn check_baseline<'a>(
+    jobs: &'a [yaml::Entry],
+    base: &'a str,
+    o: &Opts,
+    shas: &mut Vec<(&'a str, &'a str)>,
+    r: &mut Vec<String>,
+) {
     match jobs.iter().find(|e| e.key == *base) {
         None => r.push(format!("baseline job '{base}' is missing")),
         Some(e) => match e.value.get("uses").and_then(Node::as_str) {
@@ -230,10 +270,4 @@ pub fn check(text: &str, o: &Opts) -> Result<Vec<String>, String> {
             None => r.push(format!("baseline job '{base}' has no uses:")),
         },
     }
-    if let [(a, sa), (b, sb)] = shas[..]
-        && sa != sb
-    {
-        r.push(format!("jobs '{a}' and '{b}' are pinned to different SHAs"));
-    }
-    Ok(r)
 }

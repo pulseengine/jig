@@ -811,3 +811,40 @@ fn an_unwritable_record_is_exit_2_even_when_green() {
     );
     assert_eq!(code(&o), 2);
 }
+
+// rivet: verifies REQ-024
+#[test]
+fn an_empty_baseline_job_judges_no_baseline_and_says_so() {
+    let d = dir("split-verdict");
+    let wf = WF
+        .replace("  baseline:\n    uses: o/r/.github/workflows/b.yml@0123456789abcdef0123456789abcdef01234567\n", "")
+        .replace("needs: [baseline, classify]", "needs: [classify]")
+        .replace("  required:\n    needs: [baseline, classify, build, lint, fuzz]", "  required-kani:\n    needs: [classify, build, lint, fuzz]");
+    let n =
+        needs("success", F, &ALL).replace(r#""baseline":{"result":"success","outputs":{}},"#, "");
+    assert!(!n.contains("baseline"));
+    let o = run(
+        &d,
+        &n,
+        &wf,
+        &["--self-job", "required-kani", "--baseline-job", ""],
+    );
+    assert_eq!(code(&o), 0, "{}", stdout(&o));
+    assert!(stdout(&o).contains("this workflow hosts no baseline"));
+    // The default baseline id is still demanded.
+    let o = run(&d, &n, &wf, &["--self-job", "required-kani"]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("baseline job 'baseline' is absent from needs"));
+    // A failure is still red with no baseline.
+    let n2 = n.replace(
+        r#""lint":{"result":"success"}"#,
+        r#""lint":{"result":"failure"}"#,
+    );
+    let o = run(
+        &d,
+        &n2,
+        &wf,
+        &["--self-job", "required-kani", "--baseline-job", ""],
+    );
+    assert_eq!(code(&o), 1);
+}
