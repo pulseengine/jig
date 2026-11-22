@@ -68,7 +68,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
         if: inputs.jig-from-source
         with:
-          toolchain: 1.99.1
+          toolchain: 1.100.0
       - name: install jig
         env:
           FROM_SOURCE: ${{ inputs.jig-from-source }}

@@ -23,11 +23,12 @@ check to prove it can go red; jig runs its own (`ci-controls.toml`) and
 shows that stand-ins which cannot fail are reported FAIL-OPEN
 (`ci-controls.stand-in.toml`).
 
-**Status: v0.1.0 in preparation, work in progress.** jig becomes 1.0 only
-once every pulseengine repository with CI uses it. No repository can adopt
-it before the plant release that carries
-[plant#33](https://github.com/pulseengine/plant/issues/33) and jig's own
-first signed release. Design: [docs/design.md](docs/design.md).
+**Status: work in progress, pre-1.0.** jig v0.1.0 and v0.1.1 are signed
+prereleases, and its guard uses plant v0.4.0. A shadow pilot on warte
+([warte#194](https://github.com/pulseengine/warte/pull/194)) is open: there
+jig's checks run but are not required. No repository depends on jig to merge
+yet. jig becomes 1.0 only once every pulseengine repository with CI uses
+it. Design: [docs/design.md](docs/design.md).
 
 ## How a repo calls it
 
