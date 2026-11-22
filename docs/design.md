@@ -39,7 +39,7 @@ relay, temper, varve) and recorded in artifacts/ (REQ-015..020, DD-011..013):
 - **Completeness reads the caller workflow from the checkout** (path from
   `github.workflow_ref`), so no `actions: read` is needed; `jig caller`
   also checks the triggers, filters and the required job's shape (REQ-017).
-- **supply covers npm**: package-lock.json sync and `npm audit`, no waivers.
+- **supply covers npm**: package-lock.json sync and `npm audit`, no waivers. It installs node 26.13.1 (pinned setup-node) when a lock exists; jig tracks a clean fixture lock so its own supply runs the npm path (DD-016).
 - **jig cuts signed releases** (owner, 2026-11-21) and the workflows fetch
   its binary by recorded digest (docs/releasing.md); `action.yml` offers
   single checks as a step. Version 1.0 means fleet-wide use (REQ-020).

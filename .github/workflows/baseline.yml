@@ -179,15 +179,26 @@ jobs:
           if git ls-files -- '*Cargo.lock' | awk -F/ '$NF == "Cargo.lock"' | grep -q .; then
             echo "audit: none, but the tree has a Cargo.lock; pick cargo-audit or cargo-deny"; exit 1
           fi
-      # npm: the lock must match package.json, and npm audit runs on it.
+      # npm: the lock must match package.json, and npm audit runs on it. The
+      # light pool has no node, so install it when the tree has a lockfile
+      # (warte#194: "npm: command not found", exit 127).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: hashFiles('**/package-lock.json') != ''
+        with:
+          node-version: 26.13.1
+      # Same text as ci-controls/npm-lockfiles.sh, which the supply-npm-advisory
+      # control runs (tests/supply.rs keeps the two equal).
       - name: npm lockfiles
         run: |
           n=0
           while IFS= read -r lock; do
             n=$((n+1)); dir=$(dirname "$lock")
+            command -v npm > /dev/null || { echo "npm unavailable on this runner; $lock cannot be checked"; exit 1; }
             echo "::group::npm $lock"
+            before=$(mktemp)
+            cp "$lock" "$before"
             (cd "$dir" && npm install --package-lock-only --ignore-scripts --no-audit --no-fund > /dev/null)
-            git diff --exit-code -- "$lock" || { echo "$lock is out of sync with package.json"; exit 1; }
+            cmp -s "$before" "$lock" || { diff -u "$before" "$lock" || true; echo "$lock is out of sync with package.json"; exit 1; }
             (cd "$dir" && npm audit --package-lock-only --audit-level=low)
             echo "::endgroup::"
           done < <(git ls-files -- '*package-lock.json' | awk -F/ '$NF == "package-lock.json"')
