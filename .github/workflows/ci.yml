@@ -94,7 +94,7 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
         with:
-          toolchain: 1.99.1
+          toolchain: 1.100.0
           components: rustfmt, clippy
           targets: wasm32-wasip2
       - name: fmt
@@ -163,11 +163,38 @@ jobs:
       audit: cargo-audit
       jig-from-source: true
 
+  # Advisory canary (owner rule, 2026-11-21: every workflow pins 1.100.0 plus
+  # one canary on stable per repo). It warns early about the next Rust release
+  # and can never gate: continue-on-error, needed only by required, listed in
+  # advisory (REQ-021).
+  canary:
+    name: canary (stable)
+    continue-on-error: true
+    # Fork PRs never reach self-hosted runners (fail-closed same-repo guard).
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
+        with:
+          toolchain: stable
+          components: clippy
+      - name: clippy and test on stable
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/canary-target
+        run: |
+          rustc --version
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked --no-fail-fast
+
   required:
-    needs: [baseline, rivet, lint, test]
+    needs: [baseline, rivet, lint, test, canary]
     if: always()
     uses: ./.github/workflows/required.yml
     with:
       needs-json: ${{ toJSON(needs) }}
       never-skip: "rivet lint test"
+      advisory: "canary"
       jig-from-source: true
