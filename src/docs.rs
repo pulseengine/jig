@@ -7,7 +7,7 @@ jig verdict: the required / verdict decision (REQ-001, REQ-002, REQ-005)
       [--self-job required] [--baseline-job baseline] \\
       [--classifier-job classify] \\
       [--never-skip 'a b'] [--advisory c,d] [--delegated job=aggregator] \\
-      [--format text|json]
+      [--record record.json] [--format text|json]
   jig verdict --self-test
 
 needs.json is the JSON of ${{ toJSON(needs) }}. The built-in decision table
@@ -48,6 +48,18 @@ the workflow does not list the delegated job in its needs: (scalar or
 sequence); the delegated job is not a workflow job, is the baseline or self
 job, or is delegated to itself; the aggregator is itself delegated. A
 malformed pair is exit 2.
+
+--record <file> (REQ-023) also writes one JSON record (schema jig.record.v1):
+the verdict, exit code and reasons, the needs JSON as given (the classifier
+outputs and every job's result), the options, and the GitHub context from
+GITHUB_REPOSITORY, GITHUB_WORKFLOW_REF, GITHUB_EVENT_NAME, GITHUB_REF,
+GITHUB_SHA, JIG_HEAD_SHA, GITHUB_RUN_ID and GITHUB_RUN_ATTEMPT (null when
+unset). A record that cannot be written is exit 2, even after a green
+verdict line. required.yml uploads it as the artifact jig-record-<attempt>,
+kept 90 days, readable by anyone who can read the repository's Actions runs.
+Risk: the record keeps every job output the caller passes in needs for 90
+days. GitHub drops an output that contains a registered secret, but not
+other sensitive values; a caller must not put such values in job outputs.
 
 Exit: 0 passed, 1 failed or nothing compared, 2 could not run (bad args,
 unreadable or unparseable input, workflow without jobs, YAML merge key).

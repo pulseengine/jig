@@ -117,6 +117,8 @@ jobs:
           ADVISORY: ${{ inputs.advisory }}
           DELEGATED: ${{ inputs.delegated }}
           CLASSIFIER: ${{ inputs.classifier-job }}
+          # The pull request's head, not the merge commit GITHUB_SHA names.
+          JIG_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           printf '%s' "$NEEDS_JSON" > "$RUNNER_TEMP/needs.json"
           args=(--needs "$RUNNER_TEMP/needs.json" --workflow "$CALLER_WORKFLOW" --classifier-job "$CLASSIFIER")
@@ -124,4 +126,13 @@ jobs:
           for j in $ADVISORY; do args+=(--advisory "$j"); done
           for p in $DELEGATED; do args+=(--delegated "$p"); done
           jig --version
-          jig verdict "${args[@]}"
+          jig verdict "${args[@]}" --record "$RUNNER_TEMP/jig-record.json"
+      # The shadow-phase evidence (REQ-023): what sieve selected, every job's
+      # result and the verdict, kept 90 days. A missing record fails the upload.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: jig-record-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/jig-record.json
+          if-no-files-found: error
+          retention-days: 90

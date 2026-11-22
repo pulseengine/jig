@@ -127,6 +127,15 @@ run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-cont
 plant = "ci-controls/required-canary-not-advisory"
 stderr_or_stdout_matches = 'job .clippy. has continue-on-error'
 
+# A verdict whose record cannot be written is never green (REQ-023): the
+# plant turns the record path into a directory.
+[[control]]
+id = "required-record-unwritable"
+check = "aggregator: required / verdict"
+run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-controls/fixtures/caller.yml --never-skip clippy --record ci-controls/record/jig-record.json'
+plant = "ci-controls/required-record-unwritable"
+stderr_or_stdout_matches = 'cannot write record'
+
 # The planted lock is stored as package-lock.json.planted so jig's own supply
 # job does not audit it; the run renames it, then runs the same npm text as
 # baseline.yml's supply step. Needs npm on PATH: without it the unplanted run

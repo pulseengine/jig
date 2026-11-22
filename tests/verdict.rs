@@ -728,3 +728,86 @@ fn self_test_covers_delegation() {
     }
     assert_eq!(verdict::disagreeing(&rows), Vec::<usize>::new());
 }
+
+/// `run` with `--record <dir>/rec.json` and a fixed GitHub context.
+fn run_recorded(d: &Dir, needs_json: &str, rec: &std::path::Path, extra: &[&str]) -> Output {
+    fs::write(d.0.join("needs.json"), needs_json).unwrap();
+    fs::write(d.0.join("ci.yml"), WF).unwrap();
+    let mut c = Command::new(env!("CARGO_BIN_EXE_jig"));
+    for (k, _) in std::env::vars().filter(|(k, _)| k.starts_with("GITHUB_")) {
+        c.env_remove(k);
+    }
+    c.env("GITHUB_SHA", "merge0")
+        .env("JIG_HEAD_SHA", "head0")
+        .env("GITHUB_EVENT_NAME", "pull_request")
+        .env("GITHUB_RUN_ID", "42")
+        .args(["verdict", "--needs"])
+        .arg(d.0.join("needs.json"))
+        .arg("--workflow")
+        .arg(d.0.join("ci.yml"))
+        .arg("--record")
+        .arg(rec)
+        .args(extra)
+        .output()
+        .unwrap()
+}
+
+fn record(p: &std::path::Path) -> serde_json::Value {
+    serde_json::from_str(&fs::read_to_string(p).unwrap()).unwrap()
+}
+
+// rivet: verifies REQ-023
+#[test]
+fn record_holds_needs_classes_verdict_and_github_context() {
+    let d = dir("record");
+    let rec = d.0.join("rec.json");
+    let o = run_recorded(&d, &needs("success", F, &ALL), &rec, &[]);
+    assert_eq!(code(&o), 0, "{}", stdout(&o));
+    let r = record(&rec);
+    assert_eq!(r["schema"], "jig.record.v1");
+    assert_eq!(r["verdict"], "green");
+    assert_eq!(r["exit"], 0);
+    assert_eq!(r["needs"]["classify"]["outputs"]["build"], "false");
+    assert_eq!(r["needs"]["lint"]["result"], "success");
+    assert_eq!(r["github"]["head_sha"], "head0");
+    assert_eq!(r["github"]["sha"], "merge0");
+    assert_eq!(r["github"]["event"], "pull_request");
+    assert_eq!(r["github"]["run_id"], "42");
+    assert!(r["github"]["run_attempt"].is_null());
+    assert_eq!(r["options"]["classifier_job"], "classify");
+}
+
+// rivet: verifies REQ-023
+#[test]
+fn a_red_verdict_is_recorded_with_its_reasons() {
+    let d = dir("record-red");
+    let rec = d.0.join("rec.json");
+    let rest = [
+        ("build", "failure"),
+        ("lint", "success"),
+        ("fuzz", "success"),
+    ];
+    let o = run_recorded(&d, &needs("success", T, &rest), &rec, &[]);
+    assert_eq!(code(&o), 1);
+    let r = record(&rec);
+    assert_eq!(r["verdict"], "red");
+    assert_eq!(r["exit"], 1);
+    assert!(r["reasons"][0].as_str().unwrap().contains("build"));
+}
+
+// rivet: verifies REQ-023
+#[test]
+fn an_unwritable_record_is_exit_2_even_when_green() {
+    let d = dir("record-unwritable");
+    let rec = d.0.join("missing-dir").join("rec.json");
+    let o = run_recorded(&d, &needs("success", F, &ALL), &rec, &[]);
+    assert_eq!(code(&o), 2);
+    assert!(String::from_utf8_lossy(&o.stderr).contains("cannot write record"));
+    let o = run_recorded(
+        &d,
+        &needs("success", F, &ALL),
+        &d.0.join("r.json"),
+        &["--self-test"],
+    );
+    assert_eq!(code(&o), 2);
+}
