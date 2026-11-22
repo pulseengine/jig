@@ -205,14 +205,17 @@ pub fn judge(needs: &Needs, wf: &Workflow, o: &Opts) -> Vec<String> {
     if needs.is_empty() {
         r.push("needs is empty: nothing was compared".to_string());
     }
-    let baseline = needs.get(b);
-    match baseline {
-        None => r.push(format!("baseline job '{b}' is absent from needs")),
-        Some(j) if j.result != "success" => r.push(format!(
-            "baseline job '{b}' result is '{}', not success",
-            j.result
-        )),
-        Some(_) => {}
+    // An empty baseline job means this workflow hosts no baseline; another
+    // required verdict judges it (REQ-024).
+    if !b.is_empty() {
+        match needs.get(b) {
+            None => r.push(format!("baseline job '{b}' is absent from needs")),
+            Some(j) if j.result != "success" => r.push(format!(
+                "baseline job '{b}' result is '{}', not success",
+                j.result
+            )),
+            Some(_) => {}
+        }
     }
     // Only a successful classifier's outputs are read. If it is absent or did
     // not succeed, no output is known, so every class counts as selected
@@ -281,7 +284,7 @@ pub fn judge(needs: &Needs, wf: &Workflow, o: &Opts) -> Vec<String> {
         }
     }
     // The baseline's own result may be unknown too.
-    if let Some(j) = baseline
+    if let Some(j) = needs.get(b).filter(|_| !b.is_empty())
         && !KNOWN.contains(&j.result.as_str())
     {
         r.push(format!("job '{b}' has unknown result '{}'", j.result));

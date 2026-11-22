@@ -97,3 +97,18 @@ check = "aggregator: verdict without --record"
 run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-controls/fixtures/caller.yml --never-skip clippy'
 plant = "ci-controls/required-record-unwritable"
 stderr_or_stdout_matches = '.'
+
+# The split-workflow plants (REQ-024) against gates that cannot fail.
+[[control]]
+id = "stand-in-caller-split-hosts-baseline"
+check = "caller: always-green stand-in"
+run = '"$JIG" docs caller'
+plant = "ci-controls/caller-split-hosts-baseline"
+stderr_or_stdout_matches = '.'
+
+[[control]]
+id = "stand-in-required-split-sees-failure"
+check = "aggregator: always-green stand-in"
+run = '"$JIG" verdict --self-test'
+plant = "ci-controls/required-split-sees-failure"
+stderr_or_stdout_matches = '.'

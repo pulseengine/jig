@@ -472,3 +472,51 @@ fn job_level_permissions_are_not_judged() {
     assert_ne!(w, good());
     assert_eq!(code(&caller(&d, &w, &[])), 0);
 }
+
+/// good() without its baseline job, the caller job renamed to `req_id`.
+fn split_wf(req_id: &str) -> String {
+    good()
+        .replace(&format!("  baseline:\n    uses: {}\n", base_uses()), "")
+        .replace("needs: baseline\n", "")
+        .replace("[baseline, build, lint]", "[build, lint]")
+        .replace("  required:\n", &format!("  {req_id}:\n"))
+}
+
+// rivet: verifies REQ-024
+#[test]
+fn a_workflow_without_baseline_passes_only_with_empty_baseline_job_and_says_so() {
+    let d = dir("split");
+    let w = split_wf("required-kani");
+    assert!(!w.contains("baseline"), "{w}");
+    let o = caller(
+        &d,
+        &w,
+        &["--required-job", "required-kani", "--baseline-job", ""],
+    );
+    assert_eq!(code(&o), 0, "{}", stdout(&o));
+    assert!(stdout(&o).contains("this workflow hosts no baseline"));
+    // Without the empty baseline-job the missing baseline stays red.
+    let o = caller(&d, &w, &["--required-job", "required-kani"]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("baseline job 'baseline' is missing"));
+    // The default id `required` does not exist here.
+    let o = caller(&d, &w, &["--baseline-job", ""]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("required job 'required' is missing"));
+}
+
+// rivet: verifies REQ-024
+#[test]
+fn an_empty_baseline_job_beside_a_baseline_call_is_red() {
+    let d = dir("split-hosted");
+    let o = caller(&d, &good(), &["--baseline-job", ""]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("job 'baseline' calls baseline.yml but baseline-job is empty"));
+    let w = good()
+        .replace("  baseline:\n", "  base2:\n")
+        .replace("[baseline, build, lint]", "[base2, build, lint]")
+        .replace("needs: baseline\n", "needs: base2\n");
+    let o = caller(&d, &w, &["--baseline-job", ""]);
+    assert_eq!(code(&o), 1);
+    assert!(stdout(&o).contains("job 'base2' calls baseline.yml"));
+}

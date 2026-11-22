@@ -127,6 +127,22 @@ run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-cont
 plant = "ci-controls/required-canary-not-advisory"
 stderr_or_stdout_matches = 'job .clippy. has continue-on-error'
 
+# A workflow that hosts no baseline (REQ-024): baseline-job "" is green only
+# without a baseline call there, and the verdict still sees a failure.
+[[control]]
+id = "caller-split-hosts-baseline"
+check = "aggregator: required / verdict"
+run = '"$JIG" caller --workflow ci-controls/fixtures/caller-split.yml --required-job required-kani --baseline-job ""'
+plant = "ci-controls/caller-split-hosts-baseline"
+stderr_or_stdout_matches = 'calls baseline.yml but baseline-job is empty'
+
+[[control]]
+id = "required-split-sees-failure"
+check = "aggregator: required / verdict"
+run = '"$JIG" verdict --needs ci-controls/fixtures/needs-split.json --workflow ci-controls/fixtures/caller-split.yml --self-job required-kani --baseline-job "" --never-skip clippy'
+plant = "ci-controls/required-split-sees-failure"
+stderr_or_stdout_matches = 'job .clippy. result is failure'
+
 # A verdict whose record cannot be written is never green (REQ-023): the
 # plant turns the record path into a directory.
 [[control]]

@@ -39,6 +39,14 @@ on:
         description: "The caller's sieve classify job; gated jobs read needs.<it>.outputs.<class>"
         type: string
         default: classify
+      self-job:
+        description: "The calling job's own id (one verdict per workflow needs distinct ids, REQ-024)"
+        type: string
+        default: required
+      baseline-job:
+        description: "The baseline job's id in this workflow; empty when another required verdict judges the baseline (REQ-024)"
+        type: string
+        default: baseline
       jig-from-source:
         description: "Build jig from the caller's checkout. Only pulseengine/jig itself may set this (phase 0)"
         type: boolean
@@ -104,11 +112,13 @@ jobs:
         env:
           FROM_SOURCE: ${{ inputs.jig-from-source }}
           REPO: ${{ github.repository }}
+          SELF_JOB: ${{ inputs.self-job }}
+          BASELINE_JOB: ${{ inputs.baseline-job }}
         run: |
           if [ "$FROM_SOURCE" = true ] && [ "$REPO" = pulseengine/jig ]; then
-            jig caller --workflow "$CALLER_WORKFLOW" --allow-local
+            jig caller --workflow "$CALLER_WORKFLOW" --required-job "$SELF_JOB" --baseline-job "$BASELINE_JOB" --allow-local
           else
-            jig caller --workflow "$CALLER_WORKFLOW"
+            jig caller --workflow "$CALLER_WORKFLOW" --required-job "$SELF_JOB" --baseline-job "$BASELINE_JOB"
           fi
       - name: verdict
         env:
@@ -117,11 +127,13 @@ jobs:
           ADVISORY: ${{ inputs.advisory }}
           DELEGATED: ${{ inputs.delegated }}
           CLASSIFIER: ${{ inputs.classifier-job }}
+          SELF_JOB: ${{ inputs.self-job }}
+          BASELINE_JOB: ${{ inputs.baseline-job }}
           # The pull request's head, not the merge commit GITHUB_SHA names.
           JIG_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           printf '%s' "$NEEDS_JSON" > "$RUNNER_TEMP/needs.json"
-          args=(--needs "$RUNNER_TEMP/needs.json" --workflow "$CALLER_WORKFLOW" --classifier-job "$CLASSIFIER")
+          args=(--needs "$RUNNER_TEMP/needs.json" --workflow "$CALLER_WORKFLOW" --classifier-job "$CLASSIFIER" --self-job "$SELF_JOB" --baseline-job "$BASELINE_JOB")
           for j in $NEVER_SKIP; do args+=(--never-skip "$j"); done
           for j in $ADVISORY; do args+=(--advisory "$j"); done
           for p in $DELEGATED; do args+=(--delegated "$p"); done
