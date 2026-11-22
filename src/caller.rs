@@ -88,6 +88,39 @@ fn pinned_sha<'a>(uses: &'a str, file: &str, allow_local: bool) -> Option<&'a st
     (repo.contains('/') && !repo.starts_with('.') && is_sha(sha)).then_some(sha)
 }
 
+/// The workflow-level token scope (REQ-022). Absent, GitHub gives the token
+/// the repository default, which may be write; `write-all` or any `write`
+/// scope hands write access to every job, the baseline and required calls
+/// included. Only `read-all`, or a mapping of `read`/`none` scopes, is green.
+fn check_permissions(root: &Node, r: &mut Vec<String>) {
+    match root.get("permissions") {
+        None => r.push(
+            "workflow has no top-level permissions:, so the token gets the repository default; set contents: read"
+                .into(),
+        ),
+        Some(Node::Scalar { value, line, .. }) if value != "read-all" => r.push(format!(
+            "permissions: is '{value}' (line {line}); use read-all or a mapping of read/none scopes"
+        )),
+        Some(Node::Scalar { .. }) => {}
+        Some(Node::Seq { line, .. }) => {
+            r.push(format!("permissions: is a sequence (line {line}), not a mapping"))
+        }
+        Some(Node::Map { entries, .. }) => {
+            for e in entries {
+                let v = e.value.as_str();
+                if !matches!(v, Some("read" | "none")) {
+                    r.push(format!(
+                        "permissions.{} is {} (line {}); only read or none at the workflow level",
+                        e.key,
+                        v.map_or("not a scalar".to_string(), |v| format!("'{v}'")),
+                        e.line
+                    ));
+                }
+            }
+        }
+    }
+}
+
 fn check_on(on: &Node, r: &mut Vec<String>) -> Result<(), String> {
     let trig = triggers(on)?;
     for t in TRIGGERS {
@@ -135,6 +168,7 @@ pub fn check(text: &str, o: &Opts) -> Result<Vec<String>, String> {
         None => r.push("workflow has no on: trigger".to_string()),
         Some(on) => check_on(on, &mut r)?,
     }
+    check_permissions(&root, &mut r);
 
     let Some(Node::Map { entries: jobs, .. }) = root.get("jobs") else {
         return Err("workflow has no jobs mapping".into());

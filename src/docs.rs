@@ -104,7 +104,11 @@ Red (exit 1), one reason line each, if:
   - the baseline job is missing or does not use
     <path>/.github/workflows/baseline.yml@<40 lowercase hex>, the required job
     does not use <path>/.github/workflows/required.yml@<40 hex>, or the two
-    SHAs differ.
+    SHAs differ;
+  - the workflow has no top-level permissions:, has one other than read-all
+    (write-all, an expression), or a scope other than read or none (REQ-022).
+
+Blind to: job-level permissions: a job may still widen its own token.
 
 Exit: 0 passed, 1 failed, 2 could not run (unreadable or unparseable
 workflow, YAML merge key, no jobs mapping).
