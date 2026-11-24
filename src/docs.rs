@@ -129,6 +129,8 @@ some required verdict hosts the baseline is checked by temper (temper#106)
 over the repository's required contexts.
 
 Blind to: job-level permissions: a job may still widen its own token.
+Blind to: the classify job's checkout. It needs fetch-depth: 0 and no
+filter:, or sieve falls back to every class (fail closed, slow).
 
 Exit: 0 passed, 1 failed, 2 could not run (unreadable or unparseable
 workflow, YAML merge key, no jobs mapping).

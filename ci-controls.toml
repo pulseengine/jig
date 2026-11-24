@@ -99,6 +99,7 @@ run = '"$JIG" caller --workflow ci-controls/fixtures/caller.yml'
 plant = "ci-controls/caller-no-merge-group"
 stderr_or_stdout_matches = 'lacks merge_group'
 
+# rivet: verifies REQ-006
 [[control]]
 id = "supply-lock-stale"
 check = "supply: baseline / supply"
@@ -157,6 +158,7 @@ stderr_or_stdout_matches = 'cannot write record'
 # advisory (jig#9); the run renames them, then runs the same npm text as
 # baseline.yml's supply step. Needs npm on PATH: without it the unplanted run
 # is red, so the control fails.
+# rivet: verifies REQ-006
 [[control]]
 id = "supply-npm-advisory"
 check = "supply: baseline / supply"

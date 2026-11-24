@@ -28,6 +28,10 @@ relay, temper, varve) and recorded in artifacts/ (REQ-015..020, DD-011..013):
   failed it on all six classes. Shadow mode, enforce-skips and the
   `check-graph --control graph-inputs` refusal therefore live in the
   caller's classify job, as sieve documents them.
+  Its checkout needs `fetch-depth: 0` and no blob filter: sieve reads the
+  base side, and leaf scoping reads file contents, so a shallow or blobless
+  clone falls back to every class (found in the leaf replays and reported
+  to sieve).
 - **The verdict fails closed on classes** (REQ-003): a class counts as
   selected unless the classifier's output is exactly 'false', and all
   classes count as selected when the classifier is absent or did not
