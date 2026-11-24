@@ -152,8 +152,9 @@ run = '"$JIG" verdict --needs ci-controls/fixtures/needs.json --workflow ci-cont
 plant = "ci-controls/required-record-unwritable"
 stderr_or_stdout_matches = 'cannot write record'
 
-# The planted lock is stored as package-lock.json.planted so jig's own supply
-# job does not audit it; the run renames it, then runs the same npm text as
+# The planted lock and manifest are stored as *.planted, so jig's own supply
+# job does not audit them and Dependabot does not offer to "fix" the planted
+# advisory (jig#9); the run renames them, then runs the same npm text as
 # baseline.yml's supply step. Needs npm on PATH: without it the unplanted run
 # is red, so the control fails.
 [[control]]
