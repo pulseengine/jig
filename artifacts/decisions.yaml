@@ -297,9 +297,10 @@ artifacts:
       rationale: >
         The light pool has no node, so supply exited 127 on the first caller
         with a package-lock.json (warte#194). jig had no lockfile, so the npm
-        branch never ran in its own CI. The planted lock is stored as
-        package-lock.json.planted, because supply would otherwise audit it in
-        jig's own tree. Skipping npm when it is absent was rejected: a lock
+        branch never ran in its own CI. The planted lock and manifest are
+        stored as package-lock.json.planted and package.json.planted, because
+        supply would otherwise audit them in jig's own tree and Dependabot
+        would offer to "fix" the planted advisory (jig#9). Skipping npm when it is absent was rejected: a lock
         that is never audited is a silent pass.
     links:
       - type: satisfies
