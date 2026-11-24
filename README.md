@@ -74,6 +74,10 @@ jobs:
   (any class names; sieve check-workflows verifies the form). The verdict
   reads its outputs (`classifier-job`, default `classify`) and counts a class
   as selected unless its output is exactly `false`.
+- The classify job's checkout needs `fetch-depth: 0` and no `filter:`. sieve
+  reads both sides of the diff, and its leaf scoping (`scope_leaf_edits`) reads
+  file contents: with a shallow or blobless clone it falls back to selecting
+  every class. That is fail closed, but every PR then runs everything.
 - Rust toolchains are exact versions. The one exception is an advisory
   canary on `toolchain: stable`: a job with `continue-on-error: true` that no
   other job needs (except the job calling jig's required.yml), listed in

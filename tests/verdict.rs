@@ -426,6 +426,7 @@ const SKIP_BUILD: [(&str, &str); 3] = [
 ];
 
 // rivet: verifies REQ-001
+// rivet: verifies REQ-003
 #[test]
 fn classes_come_from_the_classifier_job_and_a_missing_output_is_selected() {
     let d = dir("cls");
@@ -441,6 +442,7 @@ fn classes_come_from_the_classifier_job_and_a_missing_output_is_selected() {
 }
 
 // rivet: verifies REQ-001
+// rivet: verifies REQ-003
 #[test]
 fn an_absent_or_unsuccessful_classifier_selects_every_class() {
     let d = dir("cls-absent");
@@ -472,6 +474,7 @@ fn an_absent_or_unsuccessful_classifier_selects_every_class() {
 }
 
 // rivet: verifies REQ-001
+// rivet: verifies REQ-016
 #[test]
 fn the_old_baseline_output_form_names_no_class() {
     let d = dir("cls-old");
@@ -482,6 +485,7 @@ fn the_old_baseline_output_form_names_no_class() {
 }
 
 // rivet: verifies REQ-001
+// rivet: verifies REQ-016
 #[test]
 fn classifier_job_flag_renames_the_classifier() {
     let d = dir("cls-flag");
