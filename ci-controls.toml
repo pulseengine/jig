@@ -283,3 +283,32 @@ run = '"$JIG" names --patterns ci-controls/fixtures/names-patterns.txt --allow c
 plant = "ci-controls/names-no-patterns"
 stderr_or_stdout_matches = 'no patterns; compared nothing'
 shallow_git = true
+
+# rivet: verifies REQ-026
+# The baseline step's own text (ci-controls/names.sh), fed the input from
+# ci-controls/fixtures/names-input. An empty input is red (fail closed).
+[[control]]
+id = "names-input-empty"
+check = "names: baseline / pins"
+run = 'NAMES_PATTERNS=$(cat ci-controls/fixtures/names-input) NAMES_ALLOW=ci-controls/fixtures/names-allow.txt bash ci-controls/names.sh'
+plant = "ci-controls/names-input-empty"
+stderr_or_stdout_matches = 'private-name guard has no patterns'
+shallow_git = true
+
+# rivet: verifies REQ-026
+[[control]]
+id = "names-input-untracked"
+check = "names: baseline / pins"
+run = 'NAMES_PATTERNS=$(cat ci-controls/fixtures/names-input) NAMES_ALLOW=ci-controls/fixtures/names-allow.txt bash ci-controls/names.sh'
+plant = "ci-controls/names-input-untracked"
+stderr_or_stdout_matches = 'is not a tracked file'
+shallow_git = true
+
+# rivet: verifies REQ-026
+[[control]]
+id = "names-step-planted-host"
+check = "names: baseline / pins"
+run = 'git add -A && NAMES_PATTERNS=$(cat ci-controls/fixtures/names-input) NAMES_ALLOW=ci-controls/fixtures/names-allow.txt bash ci-controls/names.sh'
+plant = "ci-controls/names-step-planted-host"
+stderr_or_stdout_matches = 'docs/zz-planted-step.md:2: matches pattern #1'
+shallow_git = true

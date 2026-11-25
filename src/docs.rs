@@ -212,6 +212,10 @@ refused. Each allowed path is printed as skipped.
 Keep exact private names out of public repositories: a tracked list of them
 is itself the leak. Shape patterns that name nothing (for example
 [a-z]+-ci-[0-9]+) can be tracked.
+baseline.yml's pins job runs jig names with the names-patterns input (a
+tracked shapes file, or none to opt out; empty or untracked is red) and
+names-allow; exact names are not taken as an input, since GitHub prints a
+step's env values in the log before the step runs.
 
 Blind to: git history (it stops new leaks, it does not scrub old ones);
 names split across lines, encoded (base64, URL escapes) or compressed

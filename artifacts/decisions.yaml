@@ -382,3 +382,33 @@ artifacts:
     links:
       - type: satisfies
         target: REQ-026
+
+  - id: DD-019
+    type: design-decision
+    title: baseline runs jig names on tracked shape patterns, and an empty input is red
+    status: draft
+    fields:
+      decision: >
+        baseline.yml's pins job runs jig names with two inputs: names-patterns
+        (a tracked file of regex shapes that name no real host, or none) and
+        names-allow (a tracked allow file). Empty names-patterns is red, a path
+        that is not tracked is red, and none is an explicit opt-out the step
+        logs. The step's text is ci-controls/names.sh (kept equal by
+        tests/supply.rs); controls plant an empty input, an untracked patterns
+        file and a synthetic name, and stand-ins that skip on empty, read any
+        path, or skip staging report FAIL-OPEN.
+      rationale: >
+        GitHub prints a step's env values in the log header before the step
+        runs (jig run 45605454802), so exact names passed as an input would be
+        printed whatever ::add-mask:: does afterwards; the owner chose shape
+        patterns only and fail-closed (2026-11-25, decision
+        20261125T144454-ef84c1, confirmed in jig's dialog). Exact names stay
+        with the fleet sweep.
+      alternatives: >
+        An optional caller secret with the exact list (rejected by the owner:
+        first secret in jig's interface); sha256 digests in an org variable
+        (rejected: short hostnames can be brute-forced from public digests);
+        off by default (rejected: a caller that never opts in is unguarded).
+    links:
+      - type: satisfies
+        target: REQ-026

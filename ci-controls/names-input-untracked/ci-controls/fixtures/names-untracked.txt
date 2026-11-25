@@ -1,0 +1,2 @@
+# Planted: a patterns file that is not tracked.
+zz-never-[0-9]{40}

@@ -168,6 +168,9 @@ jobs:
     with:
       audit: cargo-audit
       jig-from-source: true
+      # jig names nothing private; the synthetic shape keeps the step live.
+      names-patterns: ci-controls/fixtures/names-patterns.txt
+      names-allow: ci-controls/fixtures/names-allow.txt
 
   # Advisory canary (owner rule, 2026-11-21: every workflow pins 1.100.0 plus
   # one canary on stable per repo). It warns early about the next Rust release

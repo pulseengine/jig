@@ -8,8 +8,14 @@ are described in their GitHub release notes.
 
 - `jig names`: refuses a tracked file that matches one of the caller's
   private-name patterns, and prints the file, line and pattern index, never
-  the match (REQ-026, jig#17, `jig docs names`). baseline.yml does not run
-  it yet: where the exact names come from in CI is an owner decision.
+  the match (REQ-026, jig#17, `jig docs names`).
+- baseline: **new required input `names-patterns`** (breaking on bump). The
+  pins job runs `jig names` with it: a tracked file of shape patterns that
+  name no real host, or `none` to opt out (logged). Empty, or a path that is
+  not tracked, is red. `names-allow` names a tracked allow file. Exact names
+  are not accepted as an input: GitHub prints a step's env values in the
+  log before the step runs (owner, 2026-11-25: shape patterns only, fail
+  closed).
 
 ## v0.1.6 (2026-11-25)
 

@@ -11,6 +11,9 @@ should own alone:
   `package-lock.json`, and Bazel's lockfile mode. Every Cargo workspace needs
   a committed lock, unless the `lockfile-census` input names a census that
   lists it with an issue and a reason (`jig docs lockfiles`);
+- the private-name check: no tracked file or path matches the caller's
+  shape patterns (input `names-patterns`, a tracked file, or `none`; empty
+  is red), and a finding never prints the match (`jig docs names`);
 - the action-pin check: every `uses:` is a 40-hex SHA and every Rust
   toolchain a literal version (`jig pins`);
 - the verdict's reading of sieve: a skip passes only for a class the

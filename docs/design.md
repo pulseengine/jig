@@ -68,8 +68,10 @@ Inputs: `pool` (default `light`), `fallback` (`ubuntu-24.04`), `sieve-config`
 (`sieve.toml`), `guard-config` (`plant-guard.toml`), `controls`
 (`ci-controls.toml`), `controls-only` (cheap control ids per PR), `audit`
 (`cargo-deny` | `cargo-audit` | `none`), `lockfile-census` (a census of
-lock-free Cargo workspaces; empty: none), `bazel` (bool),| `cargo-audit` | `none`), `bazel` (bool), `enforce-skips`
-(bool, default false = shadow mode, every class true).
+lock-free Cargo workspaces; empty: none), `names-patterns` (a tracked file
+of private-name shape patterns, or `none`; empty is red), `names-allow` (a
+tracked allow file for `jig names`), `bazel` (bool), `enforce-skips` (bool,
+default false = shadow mode, every class true).
 
 **Superseded (v0.1.0 has no outputs; see "as built"):**
 Outputs: `run_all`, `reason`, `classes` (JSON), and one fixed output per fleet
@@ -132,7 +134,7 @@ nightly and whenever `.github/**`, `ci-controls.toml` or lockfiles change.
 | pins | `actions/checkout@v4`; `dtolnay/rust-toolchain@stable` | PR |
 | audit | nested `Cargo.lock` with a known advisory | PR |
 | lockfile freshness | `Cargo.toml` bump without a lock update; `MODULE.bazel` edit without a lock update | PR |
-| private names (`jig names`, not in baseline yet) | a synthetic runner name in a tracked file; an empty patterns file (`names-planted-host`, `names-no-patterns`) | PR |
+| private names (`jig names`, baseline / pins) | a synthetic runner name in a tracked file; an empty patterns file; an empty or untracked `names-patterns` input (`names-planted-host`, `names-no-patterns`, `names-input-empty`, `names-input-untracked`, `names-step-planted-host`) | PR |
 | lint | one unformatted file | PR |
 | rivet validate | an artifact with a broken link | PR |
 | build | compile error in a claimed crate | nightly |
