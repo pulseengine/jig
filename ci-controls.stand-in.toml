@@ -190,3 +190,19 @@ plant = "ci-controls/supply-census-duplicate"
 stderr_or_stdout_matches = '.'
 shallow_git = true
 
+
+[[control]]
+id = "stand-in-names-planted-host"
+check = "names: a pattern that never matches"
+run = 'git add -A && "$JIG" names --patterns ci-controls/fixtures/names-never.txt --allow ci-controls/fixtures/names-allow.txt .'
+plant = "ci-controls/names-planted-host"
+stderr_or_stdout_matches = '.'
+shallow_git = true
+
+[[control]]
+id = "stand-in-names-no-patterns"
+check = "names: an empty list skips the check"
+run = 'if grep -qv "^#" ci-controls/fixtures/names-patterns.txt; then "$JIG" names --patterns ci-controls/fixtures/names-patterns.txt --allow ci-controls/fixtures/names-allow.txt .; fi'
+plant = "ci-controls/names-no-patterns"
+stderr_or_stdout_matches = '.'
+shallow_git = true

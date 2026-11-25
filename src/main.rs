@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::json;
 
-use jig::{caller, docs, lockfiles, pins, verdict};
+use jig::{caller, docs, lockfiles, names, pins, verdict};
 
 /// Exit codes: 0 check passed, 1 check failed or nothing compared, 2 could not run.
 #[derive(Parser)]
@@ -90,6 +90,18 @@ enum Cmd {
         #[arg(long)]
         census: Option<PathBuf>,
     },
+    /// Check that no tracked file contains a private name (see `jig docs names`).
+    Names {
+        /// Repository root (a git work tree).
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Patterns file: one regex per line, `#` comments.
+        #[arg(long)]
+        patterns: PathBuf,
+        /// Allow file: repository-relative paths (a trailing `/` allows a directory).
+        #[arg(long)]
+        allow: Option<PathBuf>,
+    },
     /// List or print the embedded docs.
     Docs {
         /// Topic to print; omit to list.
@@ -153,6 +165,11 @@ fn main() -> ExitCode {
             },
         ),
         Cmd::Lockfiles { dir, census } => run_lockfiles(cli.format, &dir, census.as_deref()),
+        Cmd::Names {
+            dir,
+            patterns,
+            allow,
+        } => run_names(cli.format, &dir, &patterns, allow.as_deref()),
         Cmd::Docs { topic } => run_docs(topic.as_deref()),
     };
     ExitCode::from(code)
@@ -407,25 +424,10 @@ fn run_lockfiles(f: Format, dir: &Path, census: Option<&Path>) -> u8 {
         Ok(p) => p,
         Err(e) => return could_not_run(f, &format!("{}: {e}", dir.display())),
     };
-    let out = match Command::new("git")
-        .arg("-C")
-        .arg(&top)
-        .args(["ls-files", "-z"])
-        .output()
-    {
-        Ok(o) if o.status.success() => o,
-        Ok(o) => {
-            let msg = String::from_utf8_lossy(&o.stderr);
-            return could_not_run(f, &format!("git ls-files: {}", msg.trim()));
-        }
-        Err(e) => return could_not_run(f, &format!("git: {e}")),
+    let tracked: BTreeSet<String> = match tracked_files(&top) {
+        Ok(t) => t,
+        Err(e) => return could_not_run(f, &e),
     };
-    let tracked: BTreeSet<String> = out
-        .stdout
-        .split(|b| *b == 0)
-        .filter(|s| !s.is_empty())
-        .map(|s| String::from_utf8_lossy(s).into_owned())
-        .collect();
     let manifests = lockfiles::manifests(&tracked);
     if manifests.is_empty() {
         if f == Format::Json {
@@ -504,4 +506,233 @@ fn run_lockfiles(f: Format, dir: &Path, census: Option<&Path>) -> u8 {
         );
     }
     code
+}
+
+/// Tracked files of the work tree at `top`, as `git ls-files` prints them.
+fn tracked_files(top: &Path) -> Result<std::collections::BTreeSet<String>, String> {
+    Ok(tracked_raw(top)?
+        .iter()
+        .map(|s| String::from_utf8_lossy(s).into_owned())
+        .collect())
+}
+
+/// Tracked paths as raw bytes, in git ls-files order.
+fn tracked_raw(top: &Path) -> Result<Vec<Vec<u8>>, String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(top)
+        .args(["ls-files", "-z"])
+        .output()
+        .map_err(|e| format!("git: {e}"))?;
+    if !out.status.success() {
+        let msg = String::from_utf8_lossy(&out.stderr);
+        return Err(format!("git ls-files: {}", msg.trim()));
+    }
+    Ok(out
+        .stdout
+        .split(|b| *b == 0)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_vec())
+        .collect())
+}
+
+fn run_names(f: Format, dir: &Path, patterns: &Path, allow: Option<&Path>) -> u8 {
+    let top = match fs::canonicalize(dir) {
+        Ok(p) => p,
+        Err(e) => return could_not_run(f, &format!("{}: {e}", dir.display())),
+    };
+    let pats = match read(patterns).and_then(|t| names::parse_patterns(&t)) {
+        Ok(p) => p,
+        Err(e) => return could_not_run(f, &e),
+    };
+    let allow = match allow {
+        Some(p) => match read(p).and_then(|t| names::parse_allow(&t)) {
+            Ok(a) => a,
+            Err(e) => return could_not_run(f, &e),
+        },
+        None => Vec::new(),
+    };
+    if pats.is_empty() {
+        if f == Format::Json {
+            println!("{}", json!({"verdict": "red", "compared_nothing": true}));
+        } else {
+            println!("names: the patterns file has no patterns; compared nothing");
+        }
+        return FAIL;
+    }
+    // What a commit of this tree publishes is the index, so contents come from
+    // the index blobs (git ls-files --stage, git cat-file --batch), not the
+    // work tree: a filter or working-tree-encoding cannot make the scanned
+    // bytes differ from the published ones, and a symlink's blob is its
+    // target text. A path that is not UTF-8 is refused rather than skipped.
+    let staged = match staged_blobs(&top) {
+        Ok(s) => s,
+        Err(e) => return could_not_run(f, &e),
+    };
+    let mut tracked = std::collections::BTreeSet::new();
+    let mut objects: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
+    for (i, (mode, sha, raw)) in staged.into_iter().enumerate() {
+        let Ok(path) = String::from_utf8(raw) else {
+            let msg = format!(
+                "tracked path {} is not UTF-8; jig names cannot judge it",
+                i + 1
+            );
+            return could_not_run(f, &msg);
+        };
+        // A gitlink (submodule) has no blob in this repository.
+        let obj = (mode != "160000").then_some(sha);
+        objects.entry(path.clone()).or_insert(obj);
+        tracked.insert(path);
+    }
+    let mut batch = match BlobReader::start(&top) {
+        Ok(b) => b,
+        Err(e) => return could_not_run(f, &e),
+    };
+    let unreadable = std::cell::RefCell::new(None::<String>);
+    let batch_cell = std::cell::RefCell::new(&mut batch);
+    let read_file = |rel: &str| -> Option<Vec<u8>> {
+        let sha = objects.get(rel)?.as_deref()?;
+        match batch_cell.borrow_mut().get(sha) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                let n = tracked.iter().position(|t| t == rel).map_or(0, |i| i + 1);
+                let shown = names::label(rel, n, &pats);
+                unreadable
+                    .borrow_mut()
+                    .get_or_insert(format!("{shown}: {e}"));
+                None
+            }
+        }
+    };
+    let rep = names::check(&tracked, &pats, &allow, &read_file);
+    if let Some(e) = unreadable.into_inner() {
+        return could_not_run(f, &e);
+    }
+    let code = if rep.findings.is_empty() { PASS } else { FAIL };
+    if f == Format::Json {
+        let findings: Vec<_> = rep
+            .findings
+            .iter()
+            .map(|x| json!({"file": x.file, "line": x.line, "pattern": x.pattern}))
+            .collect();
+        println!(
+            "{}",
+            json!({
+                "verdict": if code == PASS { "green" } else { "red" },
+                "scanned": rep.scanned,
+                "binary": rep.binary,
+                "allowed": rep.allowed,
+                "findings": findings,
+            })
+        );
+    } else {
+        for x in &rep.findings {
+            if x.line == 0 {
+                println!("{}: its path matches pattern #{}", x.file, x.pattern);
+            } else {
+                println!("{}:{}: matches pattern #{}", x.file, x.line, x.pattern);
+            }
+        }
+        for a in &rep.allowed {
+            println!("skipped (allow file): {a}");
+        }
+        println!(
+            "names: {} file(s) scanned, {} binary, {} allowed, {} finding(s) for {} pattern(s)",
+            rep.scanned,
+            rep.binary,
+            rep.allowed.len(),
+            rep.findings.len(),
+            pats.len()
+        );
+    }
+    code
+}
+
+/// The index entries as (mode, object id, raw path), in git ls-files order.
+fn staged_blobs(top: &Path) -> Result<Vec<(String, String, Vec<u8>)>, String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(top)
+        .args(["ls-files", "--stage", "-z"])
+        .output()
+        .map_err(|e| format!("git: {e}"))?;
+    if !out.status.success() {
+        let msg = String::from_utf8_lossy(&out.stderr);
+        return Err(format!("git ls-files: {}", msg.trim()));
+    }
+    let mut v = Vec::new();
+    for rec in out.stdout.split(|b| *b == 0).filter(|s| !s.is_empty()) {
+        // "<mode> <object> <stage>\t<path>"
+        let tab = rec
+            .iter()
+            .position(|b| *b == b'\t')
+            .ok_or("git ls-files --stage: a record without a tab")?;
+        let head = String::from_utf8_lossy(&rec[..tab]).into_owned();
+        let mut it = head.split(' ');
+        let (Some(mode), Some(sha)) = (it.next(), it.next()) else {
+            return Err("git ls-files --stage: a record without mode and object".into());
+        };
+        v.push((mode.to_string(), sha.to_string(), rec[tab + 1..].to_vec()));
+    }
+    Ok(v)
+}
+
+/// One `git cat-file --batch` process, asked for one object at a time.
+struct BlobReader {
+    child: std::process::Child,
+    stdin: std::process::ChildStdin,
+    out: std::io::BufReader<std::process::ChildStdout>,
+}
+
+impl BlobReader {
+    fn start(top: &Path) -> Result<Self, String> {
+        use std::process::{Command, Stdio};
+        let mut child = Command::new("git")
+            .arg("-C")
+            .arg(top)
+            .args(["cat-file", "--batch"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("git cat-file: {e}"))?;
+        let stdin = child.stdin.take().ok_or("git cat-file: no stdin")?;
+        let out = std::io::BufReader::new(child.stdout.take().ok_or("git cat-file: no stdout")?);
+        Ok(BlobReader { child, stdin, out })
+    }
+
+    fn get(&mut self, sha: &str) -> Result<Vec<u8>, String> {
+        use std::io::{BufRead, Read, Write};
+        writeln!(self.stdin, "{sha}")
+            .and_then(|_| self.stdin.flush())
+            .map_err(|e| format!("git cat-file: {e}"))?;
+        let mut head = String::new();
+        self.out
+            .read_line(&mut head)
+            .map_err(|e| format!("git cat-file: {e}"))?;
+        // "<object> blob <size>", or "<object> missing"
+        let parts: Vec<&str> = head.trim_end().split(' ').collect();
+        let [_, "blob", size] = parts.as_slice() else {
+            return Err(format!(
+                "git cat-file: object is not a readable blob ({})",
+                head.trim_end()
+            ));
+        };
+        let size: usize = size
+            .parse()
+            .map_err(|_| "git cat-file: bad size".to_string())?;
+        let mut buf = vec![0u8; size + 1];
+        self.out
+            .read_exact(&mut buf)
+            .map_err(|e| format!("git cat-file: {e}"))?;
+        buf.pop();
+        Ok(buf)
+    }
+}
+
+impl Drop for BlobReader {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
 }

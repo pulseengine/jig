@@ -3,6 +3,7 @@
 pub mod caller;
 pub mod docs;
 pub mod lockfiles;
+pub mod names;
 pub mod pins;
 pub mod verdict;
 pub mod yaml;

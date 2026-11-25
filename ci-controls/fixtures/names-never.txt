@@ -1,0 +1,2 @@
+# Stand-in: a pattern that can never match a real file.
+zz-never-[0-9]{40}

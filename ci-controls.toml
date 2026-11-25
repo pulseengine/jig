@@ -263,3 +263,23 @@ plant = "ci-controls/supply-census-duplicate"
 stderr_or_stdout_matches = 'is listed 2 times'
 shallow_git = true
 
+
+# rivet: verifies REQ-026
+# The planted name must be found, and never printed: a run whose output
+# contains it exits 0, which plant reports as a failed control.
+[[control]]
+id = "names-planted-host"
+check = "names: jig names"
+run = 'git add -A && out=$("$JIG" names --patterns ci-controls/fixtures/names-patterns.txt --allow ci-controls/fixtures/names-allow.txt .); rc=$?; printf "%s\n" "$out"; case "$out" in *zz-planted-ci-[0]1*) echo "jig printed the planted name"; exit 0;; esac; exit $rc'
+plant = "ci-controls/names-planted-host"
+stderr_or_stdout_matches = 'docs/zz-planted.md:3: matches pattern #1'
+shallow_git = true
+
+# rivet: verifies REQ-026
+[[control]]
+id = "names-no-patterns"
+check = "names: jig names"
+run = '"$JIG" names --patterns ci-controls/fixtures/names-patterns.txt --allow ci-controls/fixtures/names-allow.txt .'
+plant = "ci-controls/names-no-patterns"
+stderr_or_stdout_matches = 'no patterns; compared nothing'
+shallow_git = true

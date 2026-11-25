@@ -346,3 +346,39 @@ artifacts:
     links:
       - type: satisfies
         target: REQ-025
+
+  - id: DD-018
+    type: design-decision
+    title: Private names are matched by index-numbered patterns, and never printed
+    status: draft
+    fields:
+      decision: >
+        jig names takes a patterns file (one Rust regex per line) and an
+        optional allow file (paths, a trailing / for a directory), lists the
+        index with git ls-files --stage, reads each blob with git cat-file --batch
+        (what a commit publishes, so filters and working-tree-encoding cannot
+        change it), matches it as bytes (binary and non-UTF-8 files too, so a
+        NUL byte cannot hide a name), matches paths per component and dotted
+        piece, redacts a matching path as <tracked path N>, and prints file:line: matches pattern #n. The patterns'
+        text and the matched text are never printed, including in errors. The
+        controls plant a synthetic name (names-planted-host) and an empty
+        patterns file (names-no-patterns); the first control exits 0 if the
+        output contains the planted name, so an echo fails it. Stand-ins (a
+        never-matching pattern, an empty list that skips the check) report
+        FAIL-OPEN.
+      rationale: >
+        A fleet sweep found self-hosted runner hostnames in tracked files of
+        public repositories (jig#17). CI logs of public repositories are
+        public, so a check that printed the match would leak it again. Wiring
+        into baseline.yml waits on the owner: GitHub prints a step's env values
+        in the log before the step runs (measured in jig run 45605454802), so
+        an exact-name list passed as an input would be printed whatever the
+        step masks afterwards.
+      alternatives: >
+        Mask the list with ::add-mask:: in the step (rejected: the env header
+        is printed first); print the match for convenience (rejected: leaks);
+        glob allow entries (rejected: an allow list should name what it
+        skips).
+    links:
+      - type: satisfies
+        target: REQ-026

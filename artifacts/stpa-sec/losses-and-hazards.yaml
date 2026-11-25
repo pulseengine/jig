@@ -111,6 +111,21 @@ artifacts:
       - type: leads-to-sec-loss
         target: SL-2
 
+  - id: SH-6
+    type: sec-hazard
+    title: A private infrastructure name is published in a tracked file
+    status: draft
+    description: >
+      A self-hosted runner hostname or other private name lands in a tracked
+      file of a public repository (a fleet sweep found several), giving an
+      attacker the names to target.
+    fields:
+      cia-impact: [confidentiality]
+      severity: medium
+    links:
+      - type: leads-to-sec-loss
+        target: SL-1
+
   - id: SSC-1
     type: sec-constraint
     title: Fork pull requests never reach self-hosted runners
@@ -167,6 +182,18 @@ artifacts:
     links:
       - type: prevents-sec-hazard
         target: SH-5
+
+  - id: SSC-6
+    type: sec-constraint
+    title: No tracked file carries a private name, and no check prints one
+    status: draft
+    description: >
+      A change that adds a match of the caller's private-name patterns to a
+      tracked file is refused, and the check names the file, line and pattern
+      index, never the matched text.
+    links:
+      - type: prevents-sec-hazard
+        target: SH-6
 
   # ---- security UCAs (controllers in artifacts/stpa/control-structure.yaml) ----
   - id: SUCA-1

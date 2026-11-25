@@ -132,6 +132,7 @@ nightly and whenever `.github/**`, `ci-controls.toml` or lockfiles change.
 | pins | `actions/checkout@v4`; `dtolnay/rust-toolchain@stable` | PR |
 | audit | nested `Cargo.lock` with a known advisory | PR |
 | lockfile freshness | `Cargo.toml` bump without a lock update; `MODULE.bazel` edit without a lock update | PR |
+| private names (`jig names`, not in baseline yet) | a synthetic runner name in a tracked file; an empty patterns file (`names-planted-host`, `names-no-patterns`) | PR |
 | lint | one unformatted file | PR |
 | rivet validate | an artifact with a broken link | PR |
 | build | compile error in a claimed crate | nightly |

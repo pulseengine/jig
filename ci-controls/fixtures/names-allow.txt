@@ -1,0 +1,3 @@
+# Paths jig names skips in jig's own controls: the plant that carries the
+# planted name (its overlay at docs/ is not skipped).
+ci-controls/names-planted-host/
