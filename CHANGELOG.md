@@ -4,7 +4,7 @@ jig is below 1.0 (REQ-020). Callers pin the record commit that follows each
 signed tag, never the tag commit (docs/releasing.md). Releases before v0.1.6
 are described in their GitHub release notes.
 
-## v0.1.6 (unreleased)
+## v0.1.6 (2026-11-25)
 
 - supply: every Cargo workspace found from the tracked Cargo.toml files
   needs a committed Cargo.lock, unless the new `lockfile-census` input lists
