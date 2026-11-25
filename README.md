@@ -24,7 +24,8 @@ shows that stand-ins which cannot fail are reported FAIL-OPEN
 (`ci-controls.stand-in.toml`).
 
 **Status: work in progress, pre-1.0.** jig v0.1.0 to v0.1.4 are signed
-prereleases, and its guard uses plant v0.4.0. warte calls jig in
+prereleases. Their guard uses plant v0.4.0; main uses plant v0.5.0.
+warte calls jig in
 shadow mode since [warte#194](https://github.com/pulseengine/warte/pull/194)
 (2026-11-22): jig's checks run on every pull request there but are not
 required. No repository depends on jig to merge yet. jig becomes 1.0 only

@@ -300,7 +300,8 @@ artifacts:
         branch never ran in its own CI. The planted lock and manifest are
         stored as package-lock.json.planted and package.json.planted, because
         supply would otherwise audit them in jig's own tree and Dependabot
-        would offer to "fix" the planted advisory (jig#9). Skipping npm when it is absent was rejected: a lock
+        would offer to "fix" the planted advisory (jig#9); plant v0.5.0
+        (plant#38) writes them under their real names in its copy. Skipping npm when it is absent was rejected: a lock
         that is never audited is a silent pass.
     links:
       - type: satisfies
