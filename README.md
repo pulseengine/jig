@@ -8,7 +8,9 @@ should own alone:
 - the fail-closed fork guard, so fork code never reaches self-hosted runners
   (plant guard);
 - the lockfile and audit check over every `Cargo.lock` and
-  `package-lock.json`, and Bazel's lockfile mode;
+  `package-lock.json`, and Bazel's lockfile mode. Every Cargo workspace needs
+  a committed lock, unless the `lockfile-census` input names a census that
+  lists it with an issue and a reason (`jig docs lockfiles`);
 - the action-pin check: every `uses:` is a 40-hex SHA and every Rust
   toolchain a literal version (`jig pins`);
 - the verdict's reading of sieve: a skip passes only for a class the

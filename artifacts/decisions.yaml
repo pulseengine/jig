@@ -308,3 +308,41 @@ artifacts:
         target: REQ-006
       - type: satisfies
         target: REQ-007
+
+  - id: DD-017
+    type: design-decision
+    title: Workspaces come from the manifests; a census may exempt one
+    status: draft
+    fields:
+      decision: >
+        The cargo lockfiles step resolves every tracked Cargo.toml (outside
+        target/) to its workspace root and requires a committed Cargo.lock for
+        each, then keeps the existing freshness and audit loops over the
+        tracked locks. jig tracks a clean nested workspace
+        (ci-controls/fixtures/cargo) and plants a missing, a stale and a
+        vulnerable lock in it; the controls run the workflow's own text
+        (ci-controls/cargo-lockfiles.sh and cargo-audit.sh, kept equal by
+        tests/supply.rs), and root-only stand-ins report FAIL-OPEN. The check is
+        a jig subcommand (jig lockfiles) so the census is parsed as TOML, not
+        shell text. A workspace may ship without a lock only when the caller's
+        census lists it (gale's tools/xtask/lockfile-census.toml format: one
+        [[lockfree]] per manifest, issue and reason required, no wildcards,
+        stale listings fail); one control per refusal plants a faulty listing.
+      rationale: >
+        plant's lockfile pack (plant#40) run against jig v0.1.4's supply text
+        on 2026-11-25 found lock-missing-nested FAIL-OPEN: jig walked only
+        tracked Cargo.lock files, so a nested workspace whose lock was never
+        committed passed. The owner chose this over copying plant's
+        lockfiles.sh (which would drop the cargo-deny input and rename the
+                steps callers see) and over deferring (2026-11-25). gale ships six
+        workspaces lock-free on purpose and lists them in its census; the owner
+        chose census-format exemptions in v0.1.6 (2026-11-25, confirmed in jig's
+        dialog after an earlier "decide at adoption" answer).
+      alternatives: >
+        Copy plant's scripts/lockfiles.sh as the gate (rejected: loses the
+        cargo-deny choice and the per-step structure); document the gap and
+        defer (rejected by the owner); strict with no exemptions (rejected: it
+        forces locks for workspaces nothing builds, which nobody keeps current).
+    links:
+      - type: satisfies
+        target: REQ-025

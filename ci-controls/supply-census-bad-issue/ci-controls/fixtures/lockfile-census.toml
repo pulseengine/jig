@@ -1,0 +1,4 @@
+[[lockfree]]
+manifest = "ci-controls/fixtures/cargo/Cargo.toml"
+issue = "1"
+reason = "planted: the issue is not #N or owner/repo#N"

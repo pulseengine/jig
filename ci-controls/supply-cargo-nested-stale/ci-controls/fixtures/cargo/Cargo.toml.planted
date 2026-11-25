@@ -1,0 +1,9 @@
+# A clean nested workspace, so jig's own supply job runs the nested-lock path
+# (REQ-025) and the supply-cargo-nested-* controls have something to plant in.
+[package]
+name = "jig-fixture-nested"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[workspace]

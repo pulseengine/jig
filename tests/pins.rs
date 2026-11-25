@@ -352,7 +352,7 @@ fn docs_lists_and_prints_topics() {
     assert_eq!(code(&o), 0);
     let s = String::from_utf8_lossy(&o.stdout);
     assert!(s.contains("verdict") && s.contains("pins"));
-    for t in ["verdict", "pins"] {
+    for t in ["verdict", "pins", "caller", "lockfiles"] {
         let o = Command::new(bin).args(["docs", t]).output().unwrap();
         assert_eq!(code(&o), 0);
         assert!(String::from_utf8_lossy(&o.stdout).starts_with(&format!("jig {t}:")));

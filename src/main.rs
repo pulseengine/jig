@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::json;
 
-use jig::{caller, docs, pins, verdict};
+use jig::{caller, docs, lockfiles, pins, verdict};
 
 /// Exit codes: 0 check passed, 1 check failed or nothing compared, 2 could not run.
 #[derive(Parser)]
@@ -81,6 +81,15 @@ enum Cmd {
         #[arg(long)]
         allow_local: bool,
     },
+    /// Check that every Cargo workspace has a committed lock (see `jig docs lockfiles`).
+    Lockfiles {
+        /// Repository root (a git work tree).
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Lockfile census: workspaces that ship without a lock, each with an issue and a reason.
+        #[arg(long)]
+        census: Option<PathBuf>,
+    },
     /// List or print the embedded docs.
     Docs {
         /// Topic to print; omit to list.
@@ -143,6 +152,7 @@ fn main() -> ExitCode {
                 allow_local,
             },
         ),
+        Cmd::Lockfiles { dir, census } => run_lockfiles(cli.format, &dir, census.as_deref()),
         Cmd::Docs { topic } => run_docs(topic.as_deref()),
     };
     ExitCode::from(code)
@@ -384,6 +394,113 @@ fn run_pins(f: Format, dir: &Path) -> u8 {
             rep.files,
             rep.uses,
             rep.violations.len()
+        );
+    }
+    code
+}
+
+fn run_lockfiles(f: Format, dir: &Path, census: Option<&Path>) -> u8 {
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::process::Command;
+
+    let top = match fs::canonicalize(dir) {
+        Ok(p) => p,
+        Err(e) => return could_not_run(f, &format!("{}: {e}", dir.display())),
+    };
+    let out = match Command::new("git")
+        .arg("-C")
+        .arg(&top)
+        .args(["ls-files", "-z"])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        Ok(o) => {
+            let msg = String::from_utf8_lossy(&o.stderr);
+            return could_not_run(f, &format!("git ls-files: {}", msg.trim()));
+        }
+        Err(e) => return could_not_run(f, &format!("git: {e}")),
+    };
+    let tracked: BTreeSet<String> = out
+        .stdout
+        .split(|b| *b == 0)
+        .filter(|s| !s.is_empty())
+        .map(|s| String::from_utf8_lossy(s).into_owned())
+        .collect();
+    let manifests = lockfiles::manifests(&tracked);
+    if manifests.is_empty() {
+        if f == Format::Json {
+            println!("{}", json!({"verdict": "red", "compared_nothing": true}));
+        } else {
+            println!("lockfiles: no tracked Cargo.toml; compared nothing");
+        }
+        return FAIL;
+    }
+    let mut roots: BTreeMap<String, Result<String, String>> = BTreeMap::new();
+    for m in &manifests {
+        let r = Command::new("cargo")
+            .args(["locate-project", "--workspace", "--message-format", "plain"])
+            .arg("--manifest-path")
+            .arg(top.join(m))
+            .output();
+        let root = match r {
+            Ok(o) if o.status.success() => {
+                let p = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                fs::canonicalize(&p)
+                    .map_err(|e| format!("{p}: {e}"))
+                    .and_then(|abs| {
+                        abs.strip_prefix(&top)
+                            .map(|rel| rel.to_string_lossy().into_owned())
+                            .map_err(|_| format!("workspace root {p} is outside the repository"))
+                    })
+            }
+            Ok(o) => Err(String::from_utf8_lossy(&o.stderr).into_owned()),
+            Err(e) => return could_not_run(f, &format!("cargo: {e}")),
+        };
+        roots.insert(m.clone(), root);
+    }
+    let text;
+    let census_arg = match census {
+        Some(p) => {
+            text = match read(p) {
+                Ok(t) => t,
+                Err(e) => return could_not_run(f, &e),
+            };
+            Some((p.to_str().unwrap_or("census"), text.as_str()))
+        }
+        None => None,
+    };
+    let exists = |rel: &str| top.join(rel).is_file();
+    let rep = match lockfiles::check(&tracked, &roots, &exists, census_arg) {
+        Ok(r) => r,
+        Err(e) => return could_not_run(f, &e),
+    };
+    let code = if rep.reasons.is_empty() { PASS } else { FAIL };
+    if f == Format::Json {
+        println!(
+            "{}",
+            json!({
+                "verdict": if code == PASS { "green" } else { "red" },
+                "workspaces": rep.workspaces,
+                "exempt": rep.exempt,
+                "not_judged": rep.not_judged,
+                "reasons": rep.reasons,
+            })
+        );
+    } else {
+        for r in &rep.reasons {
+            println!("{r}");
+        }
+        for m in &rep.exempt {
+            println!("lock-free by census: {m}");
+        }
+        for m in &rep.not_judged {
+            println!("census listing not judged by jig (not a Cargo.toml): {m}");
+        }
+        println!(
+            "lockfiles: {} workspace(s), {} lock-free by census, {} violation(s)",
+            rep.workspaces,
+            rep.exempt.len(),
+            rep.reasons.len()
         );
     }
     code

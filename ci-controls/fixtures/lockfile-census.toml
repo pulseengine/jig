@@ -1,0 +1,3 @@
+# jig's own lockfile census (REQ-025), in gale's format: one [[lockfree]] per
+# Cargo workspace that ships without a committed lock, each with manifest,
+# issue and reason. jig lists none; the census controls plant listings here.

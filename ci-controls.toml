@@ -105,9 +105,10 @@ stderr_or_stdout_matches = 'lacks merge_group'
 [[control]]
 id = "supply-lock-stale"
 check = "supply: baseline / supply"
-run = 'cargo metadata --locked --format-version 1 > /dev/null'
+run = 'bash ci-controls/cargo-lockfiles.sh'
 plant = "ci-controls/supply-lock-stale"
 stderr_or_stdout_matches = '--locked'
+shallow_git = true
 
 [[control]]
 id = "rivet-broken-link"
@@ -168,3 +169,97 @@ run = 'bash ci-controls/npm-lockfiles.sh'
 plant = "ci-controls/supply-npm-advisory"
 stderr_or_stdout_matches = 'GHSA-xvch-5gv4-984h'
 shallow_git = true
+
+# Nested workspaces (REQ-025), from plant's examples/locks pack (plant#40):
+# ci-controls/fixtures/cargo is a clean nested workspace with its own lock,
+# and each control breaks it. The runs are baseline.yml's cargo steps
+# (tests/supply.rs keeps the scripts equal to them). The stand-ins read only
+# the root lock and must report FAIL-OPEN.
+# supply-cargo-nested-missing stages the deletion first (git add -A), so the
+# lock is gone from the index too, as when it was never committed.
+# rivet: verifies REQ-025
+[[control]]
+id = "supply-cargo-nested-missing"
+check = "supply: baseline / supply"
+run = 'git add -A && bash ci-controls/cargo-lockfiles.sh'
+plant = "ci-controls/supply-cargo-nested-missing"
+stderr_or_stdout_matches = 'fixtures/cargo/Cargo\.lock: no committed Cargo\.lock'
+shallow_git = true
+
+# rivet: verifies REQ-025
+[[control]]
+id = "supply-cargo-nested-stale"
+check = "supply: baseline / supply"
+run = 'bash ci-controls/cargo-lockfiles.sh'
+plant = "ci-controls/supply-cargo-nested-stale"
+stderr_or_stdout_matches = '(?s)metadata --locked in ci-controls/fixtures/cargo.*--locked'
+shallow_git = true
+
+# Needs cargo-audit on PATH (ci.yml installs the same version as baseline.yml).
+# rivet: verifies REQ-025
+[[control]]
+id = "supply-cargo-nested-vulnerable"
+check = "supply: baseline / supply"
+run = 'AUDIT=cargo-audit bash ci-controls/cargo-audit.sh'
+plant = "ci-controls/supply-cargo-nested-vulnerable"
+stderr_or_stdout_matches = 'RUSTSEC-2020-0071'
+shallow_git = true
+
+# The lockfile census (REQ-025): each control plants one faulty listing in
+# jig's own census (ci-controls/fixtures/lockfile-census.toml, empty and
+# clean). The run is the workflow step's text with that census. The stand-ins
+# ignore the census and must report FAIL-OPEN.
+# rivet: verifies REQ-025
+[[control]]
+id = "supply-census-stale-locked"
+check = "supply: baseline / supply"
+run = 'CENSUS=ci-controls/fixtures/lockfile-census.toml bash ci-controls/cargo-lockfiles.sh'
+plant = "ci-controls/supply-census-stale-locked"
+stderr_or_stdout_matches = 'is stale: its workspace has a committed'
+shallow_git = true
+
+# rivet: verifies REQ-025
+[[control]]
+id = "supply-census-stale-untracked"
+check = "supply: baseline / supply"
+run = 'CENSUS=ci-controls/fixtures/lockfile-census.toml bash ci-controls/cargo-lockfiles.sh'
+plant = "ci-controls/supply-census-stale-untracked"
+stderr_or_stdout_matches = 'is stale: it is not a tracked file'
+shallow_git = true
+
+# rivet: verifies REQ-025
+[[control]]
+id = "supply-census-wildcard"
+check = "supply: baseline / supply"
+run = 'CENSUS=ci-controls/fixtures/lockfile-census.toml bash ci-controls/cargo-lockfiles.sh'
+plant = "ci-controls/supply-census-wildcard"
+stderr_or_stdout_matches = 'is a wildcard'
+shallow_git = true
+
+# rivet: verifies REQ-025
+[[control]]
+id = "supply-census-no-reason"
+check = "supply: baseline / supply"
+run = 'CENSUS=ci-controls/fixtures/lockfile-census.toml bash ci-controls/cargo-lockfiles.sh'
+plant = "ci-controls/supply-census-no-reason"
+stderr_or_stdout_matches = 'manifest, issue and reason are required'
+shallow_git = true
+
+# rivet: verifies REQ-025
+[[control]]
+id = "supply-census-bad-issue"
+check = "supply: baseline / supply"
+run = 'CENSUS=ci-controls/fixtures/lockfile-census.toml bash ci-controls/cargo-lockfiles.sh'
+plant = "ci-controls/supply-census-bad-issue"
+stderr_or_stdout_matches = 'is not #N or owner/repo#N'
+shallow_git = true
+
+# rivet: verifies REQ-025
+[[control]]
+id = "supply-census-duplicate"
+check = "supply: baseline / supply"
+run = 'git add -A && CENSUS=ci-controls/fixtures/lockfile-census.toml bash ci-controls/cargo-lockfiles.sh'
+plant = "ci-controls/supply-census-duplicate"
+stderr_or_stdout_matches = 'is listed 2 times'
+shallow_git = true
+

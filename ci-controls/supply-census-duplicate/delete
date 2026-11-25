@@ -1,0 +1,2 @@
+# the duplicated listing must be lock-free for the duplicate to be the only fault
+ci-controls/fixtures/cargo/Cargo.lock
