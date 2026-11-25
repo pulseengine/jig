@@ -67,3 +67,13 @@ fn cargo_audit_step_matches_control_script() {
         .expect("cargo audit step has no install case");
     assert_eq!(after, script_body("ci-controls/cargo-audit.sh"));
 }
+
+// rivet: verifies REQ-026
+#[test]
+fn private_names_step_matches_control_script() {
+    let wf = fs::read_to_string(".github/workflows/baseline.yml").unwrap();
+    assert_eq!(
+        step_body(&wf, "private names"),
+        script_body("ci-controls/names.sh")
+    );
+}

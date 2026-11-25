@@ -430,9 +430,10 @@ artifacts:
       matches one of the caller's patterns. A finding shall give the file, the
       line and the pattern's index, never the matched text. A patterns file
       with no patterns shall fail; a bad pattern, or one that matches the
-      empty string, shall stop the check (could not run). Where the exact
-      private names come from in CI is an open owner decision
-      (20261125T144454-ef84c1); baseline.yml does not run jig names yet.
+      empty string, shall stop the check (could not run). baseline.yml's pins
+      job shall run it with the caller's names-patterns input: a tracked file
+      of shape patterns, or none (logged); an empty input, or a path that is
+      not tracked, shall fail.
     release: v0.1.7
     fields: {priority: must, category: functional}
     links:

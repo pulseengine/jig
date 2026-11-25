@@ -206,3 +206,27 @@ run = 'if grep -qv "^#" ci-controls/fixtures/names-patterns.txt; then "$JIG" nam
 plant = "ci-controls/names-no-patterns"
 stderr_or_stdout_matches = '.'
 shallow_git = true
+
+[[control]]
+id = "stand-in-names-input-empty"
+check = "names: an empty input skips the check"
+run = 'p=$(cat ci-controls/fixtures/names-input); [ -n "$p" ] || exit 0; jig names . --patterns "$p" --allow ci-controls/fixtures/names-allow.txt'
+plant = "ci-controls/names-input-empty"
+stderr_or_stdout_matches = '.'
+shallow_git = true
+
+[[control]]
+id = "stand-in-names-input-untracked"
+check = "names: patterns read from any path"
+run = 'jig names . --patterns "$(cat ci-controls/fixtures/names-input)" --allow ci-controls/fixtures/names-allow.txt'
+plant = "ci-controls/names-input-untracked"
+stderr_or_stdout_matches = '.'
+shallow_git = true
+
+[[control]]
+id = "stand-in-names-step-planted-host"
+check = "names: the step without git add sees nothing new"
+run = 'NAMES_PATTERNS=$(cat ci-controls/fixtures/names-input) NAMES_ALLOW=ci-controls/fixtures/names-allow.txt bash ci-controls/names.sh'
+plant = "ci-controls/names-step-planted-host"
+stderr_or_stdout_matches = '.'
+shallow_git = true
