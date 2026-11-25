@@ -136,7 +136,45 @@ Exit: 0 passed, 1 failed, 2 could not run (unreadable or unparseable
 workflow, YAML merge key, no jobs mapping).
 ";
 
-pub const TOPICS: [(&str, &str, &str); 3] = [
+const LOCKFILES: &str = "\
+jig lockfiles: every Cargo workspace has a committed lock (REQ-025)
+
+  jig lockfiles [DIR] [--census lockfile-census.toml] [--format text|json]
+
+DIR is a git work tree (default .). Every tracked Cargo.toml outside a
+target/ directory is resolved to its workspace root with cargo
+locate-project --workspace. Red (exit 1), one reason line each, if:
+  - a workspace has no Cargo.lock that is both on disk and tracked, and the
+    census does not list its root manifest;
+  - cargo cannot resolve a manifest's workspace;
+  - a census listing is malformed: not exactly manifest, issue and reason
+    (non-empty strings), a wildcard (* ? [ ] { }), a path not as git
+    ls-files prints it, an issue other than #N or owner/repo#N, an unknown
+    key, or a top-level key other than [[lockfree]];
+  - a census listing is stale: the file is not tracked, a Cargo.toml that
+    is not a workspace root, or a workspace that has a committed lock;
+  - a manifest is listed more than once.
+A malformed listing exempts nothing. The census format is gale's
+tools/xtask/lockfile-census.toml:
+
+  [[lockfree]]
+  manifest = \"crates/demo/Cargo.toml\"
+  issue = \"#534\"
+  reason = \"Built only by a local script CI does not run.\"
+
+A listing that is not a Cargo.toml (MODULE.bazel) must be tracked and well
+formed but is not judged further: Bazel locks are the bazel input's.
+baseline.yml's supply runs this with the lockfile-census input, then checks
+every tracked Cargo.lock under --locked and audits it.
+
+Blind to: whether a listed workspace really is never built; that is the
+reason's claim, reviewed in the census change.
+
+Exit: 0 passed, 1 failed or no tracked Cargo.toml (nothing compared),
+2 could not run (not a git work tree, census unreadable or not TOML).
+";
+
+pub const TOPICS: [(&str, &str, &str); 4] = [
     (
         "verdict",
         "the required / verdict decision and its self-test",
@@ -144,12 +182,17 @@ pub const TOPICS: [(&str, &str, &str); 3] = [
     ),
     ("pins", "action, toolchain and pip pin check", PINS),
     ("caller", "caller workflow shape check", CALLER),
+    (
+        "lockfiles",
+        "every Cargo workspace has a committed lock",
+        LOCKFILES,
+    ),
 ];
 
 pub fn list() -> String {
     let mut s = String::from("jig docs topics:\n");
     for (name, about, _) in TOPICS {
-        s += &format!("  {name:<8} {about}\n");
+        s += &format!("  {name:<10} {about}\n");
     }
     s += "Run `jig docs <topic>` to print one.\n";
     s

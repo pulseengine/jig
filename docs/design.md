@@ -67,7 +67,8 @@ Two, because the aggregator must `needs:` the caller's own jobs.
 Inputs: `pool` (default `light`), `fallback` (`ubuntu-24.04`), `sieve-config`
 (`sieve.toml`), `guard-config` (`plant-guard.toml`), `controls`
 (`ci-controls.toml`), `controls-only` (cheap control ids per PR), `audit`
-(`cargo-deny` | `cargo-audit` | `none`), `bazel` (bool), `enforce-skips`
+(`cargo-deny` | `cargo-audit` | `none`), `lockfile-census` (a census of
+lock-free Cargo workspaces; empty: none), `bazel` (bool),| `cargo-audit` | `none`), `bazel` (bool), `enforce-skips`
 (bool, default false = shadow mode, every class true).
 
 **Superseded (v0.1.0 has no outputs; see "as built"):**
@@ -81,7 +82,7 @@ Jobs:
 | job | what it does |
 |---|---|
 | guard | `plant guard` (pinned binary) against the caller's workflows |
-| supply | for every `git ls-files '*Cargo.lock'` named exactly `Cargo.lock`: `cargo metadata --locked`, then audit each lock; with `bazel`, every invocation and `.bazelrc` carry `--lockfile_mode=error` |
+| supply | `jig lockfiles`: every workspace found from the tracked `Cargo.toml` files has a committed lock or a census listing (REQ-025); for every `git ls-files '*Cargo.lock'` named exactly `Cargo.lock`: `cargo metadata --locked`, then audit each lock; with `bazel`, every invocation and `.bazelrc` carry `--lockfile_mode=error` |
 | pins | every `uses:` is a 40-hex SHA (local `./` excepted); dtolnay `toolchain:` is a version (or `stable` in an advisory canary job: `continue-on-error: true`, needed by no job but the verdict job, listed in the verdict's `advisory`); no `cargo +nightly` without a date; no `pip install` without hashes |
 | controls | `plant --only <controls-only>`, same-repo runners only |
 | classify (superseded: lives in the caller) | refuse a `sieve.toml` whose globs or paths match nothing at HEAD (extend `sieve check-graph`), then `sieve classify --format github-output`. Shadow mode, a refused config or any failure means every class is true |

@@ -1,0 +1,9 @@
+[[lockfree]]
+manifest = "ci-controls/fixtures/cargo/Cargo.toml"
+issue = "#1"
+reason = "planted: listed twice"
+
+[[lockfree]]
+manifest = "ci-controls/fixtures/cargo/Cargo.toml"
+issue = "#1"
+reason = "planted: listed twice"

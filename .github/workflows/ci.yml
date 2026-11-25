@@ -1,7 +1,7 @@
 # jig's own CI: rivet validate, actionlint, and the Rust gates with jig's
 # planted controls and stand-ins, on light runners behind the fork guard.
 # Phase 0: the baseline and required jobs call jig's own reusable workflows
-# (baseline.yml's guard uses plant v0.4.0, which carries plant#34).
+# (baseline.yml's guard uses plant v0.5.0, which carries plant#34 and #38).
 name: CI
 
 on:
@@ -109,6 +109,8 @@ jobs:
         run: |
           cargo build --locked --release
           echo "JIG=$PWD/target/release/jig" >> "$GITHUB_ENV"
+          # the supply controls run the workflow step, which calls jig by name
+          echo "$PWD/target/release" >> "$GITHUB_PATH"
       - name: jig on jig
         run: |
           "$JIG" verdict --self-test
@@ -135,6 +137,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26.13.1
+      # supply-cargo-nested-vulnerable runs the audit step's text: the same
+      # cargo-audit version baseline.yml installs.
+      - name: cargo-audit
+        run: cargo install --locked cargo-audit --version 0.22.1
       # Each control plants one bad input; only exit 0 (every control PASS)
       # is green. A dedicated target dir, never this repo's target/.
       - name: plant controls

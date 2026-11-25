@@ -42,6 +42,10 @@ on:
         description: "plant guard config; empty means plant's default lookup"
         type: string
         default: ""
+      lockfile-census:
+        description: "Lockfile census (gale format): Cargo workspaces that ship without a lock, each with an issue and a reason; empty means none may"
+        type: string
+        default: ""
       jig-from-source:
         description: "Build jig from the caller's checkout. Only pulseengine/jig itself may set this (phase 0)"
         type: boolean
@@ -136,10 +140,41 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
         with:
           toolchain: 1.100.0
-      # Every tracked file named exactly Cargo.lock binds under --locked, and
-      # every Cargo.toml workspace root has one (REQ-006).
-      - name: cargo lockfiles are fresh
+      - name: install jig
+        env:
+          FROM_SOURCE: ${{ inputs.jig-from-source }}
+          REPO: ${{ github.repository }}
         run: |
+          d="$RUNNER_TEMP/jig"; mkdir -p "$d"
+          if [ "$FROM_SOURCE" = true ]; then
+            [ "$REPO" = pulseengine/jig ] || { echo "jig-from-source is only for pulseengine/jig"; exit 1; }
+            cargo build --locked --release --target-dir "$RUNNER_TEMP/jig-target"
+            cp "$RUNNER_TEMP/jig-target/release/jig" "$d/"
+          else
+            [ -n "$JIG_SHA256" ] || { echo "no jig release is pinned in this baseline.yml"; exit 1; }
+            a="jig-$JIG_VERSION-x86_64-unknown-linux-musl.tar.gz"
+            (cd "$d" && curl -fsSL -o "$a" "https://github.com/pulseengine/jig/releases/download/$JIG_VERSION/$a" \
+              && echo "$JIG_SHA256  $a" | sha256sum -c - && tar -xzf "$a" ./jig)
+          fi
+          echo "$d" >> "$GITHUB_PATH"
+      # Every tracked file named exactly Cargo.lock binds under --locked, and
+      # every Cargo workspace has one or is listed in the census (REQ-006,
+      # REQ-025).
+      - name: cargo lockfiles are fresh
+        env:
+          CENSUS: ${{ inputs.lockfile-census }}
+        run: |
+          # Workspaces are found from the tracked Cargo.toml files (outside
+          # target/), so a nested workspace whose lock was never committed is
+          # red unless the census lists it with an issue and a reason.
+          git rev-parse --show-toplevel > /dev/null
+          # Capture, then test: grep -q exits at the first match, and under
+          # pipefail the writer's SIGPIPE would make the test false and skip
+          # the check.
+          manifests=$(git ls-files -- '*Cargo.toml' | awk -F/ '$NF == "Cargo.toml"')
+          if [ -n "$manifests" ]; then
+            if [ -n "$CENSUS" ]; then jig lockfiles . --census "$CENSUS"; else jig lockfiles .; fi
+          fi
           n=0
           while IFS= read -r lock; do
             n=$((n+1)); dir=$(dirname "$lock")
@@ -148,7 +183,7 @@ jobs:
             echo "::endgroup::"
           done < <(git ls-files -- '*Cargo.lock' | awk -F/ '$NF == "Cargo.lock"')
           echo "$n Cargo.lock file(s) checked"
-          if [ "$n" -eq 0 ] && git ls-files -- '*Cargo.toml' | grep -q .; then
+          if [ "$n" -eq 0 ] && [ -n "$manifests" ]; then
             echo "Cargo.toml is tracked but no Cargo.lock is: commit the lockfile"; exit 1
           fi
       - name: cargo audit
@@ -176,7 +211,8 @@ jobs:
       - name: audit none means no Cargo.lock
         if: inputs.audit == 'none'
         run: |
-          if git ls-files -- '*Cargo.lock' | awk -F/ '$NF == "Cargo.lock"' | grep -q .; then
+          locks=$(git ls-files -- '*Cargo.lock' | awk -F/ '$NF == "Cargo.lock"')
+          if [ -n "$locks" ]; then
             echo "audit: none, but the tree has a Cargo.lock; pick cargo-audit or cargo-deny"; exit 1
           fi
       # npm: the lock must match package.json, and npm audit runs on it. The

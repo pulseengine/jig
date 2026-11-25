@@ -1,0 +1,3 @@
+[[lockfree]]
+manifest = "ci-controls/fixtures/cargo/Cargo.toml"
+issue = "#1"

@@ -398,3 +398,24 @@ artifacts:
         target: REQ-017
       - type: constraint-satisfies
         target: SC-2
+
+  - id: REQ-025
+    type: requirement
+    title: Every Cargo workspace has a committed lock, or a census listing
+    status: draft
+    description: >
+      supply shall find every Cargo workspace from the tracked Cargo.toml files
+      outside target/ (cargo locate-project --workspace) and fail when one has
+      no Cargo.lock in the tree and in the index, unless the caller's lockfile
+      census (input lockfile-census, gale's format) lists its root manifest
+      with an issue and a reason. A malformed, duplicated, wildcard or stale
+      listing (untracked, not a workspace root, or a workspace with a
+      committed lock) fails, and exempts nothing. A manifest cargo cannot
+      resolve to a workspace fails the step.
+    release: v0.1.6
+    fields: {priority: must, category: functional}
+    links:
+      - type: refines
+        target: REQ-006
+      - type: constraint-satisfies
+        target: SC-5

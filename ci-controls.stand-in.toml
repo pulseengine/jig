@@ -112,3 +112,81 @@ check = "aggregator: always-green stand-in"
 run = '"$JIG" verdict --self-test'
 plant = "ci-controls/required-split-sees-failure"
 stderr_or_stdout_matches = '.'
+
+# The nested-workspace plants (REQ-025) against the old gates, which read only
+# tracked locks or only the root lock: a nested workspace without a lock, or
+# with a stale or vulnerable one, must go unnoticed.
+[[control]]
+id = "stand-in-supply-cargo-nested-missing"
+check = "supply: root lock only"
+run = 'git add -A && cargo metadata --locked --format-version 1 > /dev/null'
+plant = "ci-controls/supply-cargo-nested-missing"
+stderr_or_stdout_matches = '.'
+shallow_git = true
+
+[[control]]
+id = "stand-in-supply-cargo-nested-stale"
+check = "supply: root lock only"
+run = 'cargo metadata --locked --format-version 1 > /dev/null'
+plant = "ci-controls/supply-cargo-nested-stale"
+stderr_or_stdout_matches = '.'
+shallow_git = true
+
+[[control]]
+id = "stand-in-supply-cargo-nested-vulnerable"
+check = "supply: root lock only"
+run = 'cargo audit --file Cargo.lock'
+plant = "ci-controls/supply-cargo-nested-vulnerable"
+stderr_or_stdout_matches = '.'
+shallow_git = true
+
+# The census plants against a gate that ignores the census and reads only the
+# root lock (as jig v0.1.4 did): every faulty listing goes unnoticed.
+[[control]]
+id = "stand-in-supply-census-stale-locked"
+check = "supply: census ignored, root lock only"
+run = 'git add -A && cargo metadata --locked --format-version 1 > /dev/null'
+plant = "ci-controls/supply-census-stale-locked"
+stderr_or_stdout_matches = '.'
+shallow_git = true
+
+[[control]]
+id = "stand-in-supply-census-stale-untracked"
+check = "supply: census ignored, root lock only"
+run = 'git add -A && cargo metadata --locked --format-version 1 > /dev/null'
+plant = "ci-controls/supply-census-stale-untracked"
+stderr_or_stdout_matches = '.'
+shallow_git = true
+
+[[control]]
+id = "stand-in-supply-census-wildcard"
+check = "supply: census ignored, root lock only"
+run = 'git add -A && cargo metadata --locked --format-version 1 > /dev/null'
+plant = "ci-controls/supply-census-wildcard"
+stderr_or_stdout_matches = '.'
+shallow_git = true
+
+[[control]]
+id = "stand-in-supply-census-no-reason"
+check = "supply: census ignored, root lock only"
+run = 'git add -A && cargo metadata --locked --format-version 1 > /dev/null'
+plant = "ci-controls/supply-census-no-reason"
+stderr_or_stdout_matches = '.'
+shallow_git = true
+
+[[control]]
+id = "stand-in-supply-census-bad-issue"
+check = "supply: census ignored, root lock only"
+run = 'git add -A && cargo metadata --locked --format-version 1 > /dev/null'
+plant = "ci-controls/supply-census-bad-issue"
+stderr_or_stdout_matches = '.'
+shallow_git = true
+
+[[control]]
+id = "stand-in-supply-census-duplicate"
+check = "supply: census ignored, root lock only"
+run = 'git add -A && cargo metadata --locked --format-version 1 > /dev/null'
+plant = "ci-controls/supply-census-duplicate"
+stderr_or_stdout_matches = '.'
+shallow_git = true
+
