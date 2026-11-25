@@ -99,6 +99,8 @@ run = '"$JIG" caller --workflow ci-controls/fixtures/caller.yml'
 plant = "ci-controls/caller-no-merge-group"
 stderr_or_stdout_matches = 'lacks merge_group'
 
+# The planted manifest is stored as Cargo.toml.planted so dependency bots do
+# not read it; plant (v0.5.0, plant#38) writes it as Cargo.toml.
 # rivet: verifies REQ-006
 [[control]]
 id = "supply-lock-stale"
@@ -155,14 +157,14 @@ stderr_or_stdout_matches = 'cannot write record'
 
 # The planted lock and manifest are stored as *.planted, so jig's own supply
 # job does not audit them and Dependabot does not offer to "fix" the planted
-# advisory (jig#9); the run renames them, then runs the same npm text as
-# baseline.yml's supply step. Needs npm on PATH: without it the unplanted run
+# advisory (jig#9); plant (v0.5.0, plant#38) writes them under their real
+# names, and the run is the same npm text as baseline.yml's supply step. Needs npm on PATH: without it the unplanted run
 # is red, so the control fails.
 # rivet: verifies REQ-006
 [[control]]
 id = "supply-npm-advisory"
 check = "supply: baseline / supply"
-run = "for f in $(find ci-controls -name '*.planted'); do mv \"$f\" \"${f%.planted}\"; done && bash ci-controls/npm-lockfiles.sh"
+run = 'bash ci-controls/npm-lockfiles.sh'
 plant = "ci-controls/supply-npm-advisory"
 stderr_or_stdout_matches = 'GHSA-xvch-5gv4-984h'
 shallow_git = true

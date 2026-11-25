@@ -33,10 +33,10 @@ env:
   # checksums.txt, recorded 2026-11-21.
   ACTIONLINT_VERSION: 1.7.12
   ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-  # plant v0.4.0, x86_64-unknown-linux-musl, from SHA256SUMS.txt verified
-  # with cosign against release.yml@refs/tags/v0.4.0 on 2026-11-21.
-  PLANT_VERSION: v0.4.0
-  PLANT_SHA256: 30bfd8b63bf95f4a4c3bd6ff890b551f550d75dc4a7b2bd3098224d76a99761f
+  # plant v0.5.0, x86_64-unknown-linux-musl, from SHA256SUMS.txt verified
+  # with cosign against release.yml@refs/tags/v0.5.0 on 2026-11-25.
+  PLANT_VERSION: v0.5.0
+  PLANT_SHA256: 8998648bbea539d57e048ad8782aad7743f4b15f3b2b2e7b9e9e40d178a0a09c
 
 jobs:
   rivet:
