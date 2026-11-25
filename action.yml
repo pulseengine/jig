@@ -26,8 +26,8 @@ runs:
     - name: install jig
       shell: bash
       env:
-        JIG_VERSION: v0.1.4
-        JIG_SHA256: 3ceb9ead350265d3c8d24bc7c2013466744a01bb32a54fb7b6764fec949fac45
+        JIG_VERSION: v0.1.5
+        JIG_SHA256: 880c0d17cc8f971562478f5fd66c67004d2953d9b193b11a574096386edc3997
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
