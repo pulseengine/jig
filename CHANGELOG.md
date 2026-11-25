@@ -12,10 +12,11 @@ are described in their GitHub release notes.
 - baseline: **new required input `names-patterns`** (breaking on bump). The
   pins job runs `jig names` with it: a tracked file of shape patterns that
   name no real host, or `none` to opt out (logged). Empty, or a path that is
-  not tracked, is red. `names-allow` names a tracked allow file. Exact names
-  are not accepted as an input: GitHub prints a step's env values in the
-  log before the step runs (owner, 2026-11-25: shape patterns only, fail
-  closed).
+  not tracked, is red. `none` raises a `names: off` warning annotation and
+  a job summary line, so an opted-out repo shows in the run. `names-allow`
+  names a tracked allow file. Exact names are not accepted as an input:
+  GitHub prints a step's env values in the log before the step runs
+  (owner, 2026-11-25: shape patterns only, fail closed).
 
 ## v0.1.6 (2026-11-25)
 

@@ -5,7 +5,8 @@ case "$NAMES_PATTERNS" in
     echo "private-name guard has no patterns: pass names-patterns: <tracked shapes file>, or names-patterns: none"
     exit 1 ;;
   none)
-    echo "names-patterns: none; the private-name guard is off for this repository"
+    echo "::warning title=names: off::names-patterns: none; the private-name guard is off for this repository"
+    if [ -n "$GITHUB_STEP_SUMMARY" ]; then echo "names: off (names-patterns: none)" >> "$GITHUB_STEP_SUMMARY"; fi
     exit 0 ;;
 esac
 git ls-files --error-unmatch -- "$NAMES_PATTERNS" > /dev/null 2>&1 \
