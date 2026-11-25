@@ -174,7 +174,56 @@ Exit: 0 passed, 1 failed or no tracked Cargo.toml (nothing compared),
 2 could not run (not a git work tree, census unreadable or not TOML).
 ";
 
-pub const TOPICS: [(&str, &str, &str); 4] = [
+const NAMES: &str = "\
+jig names: no tracked file contains a private name (REQ-026)
+
+  jig names [DIR] --patterns FILE [--allow FILE] [--format text|json]
+
+DIR is a git work tree (default .). Every file in its index (git ls-files)
+that is not allowed is read as git will publish it, from the index blob
+(git cat-file), not from the work tree, and matched line by line as bytes;
+a filter or working-tree-encoding cannot change what is scanned. Stage a
+change (git add) before checking it. Binary and non-UTF-8 files are
+scanned too: skipping them would let one NUL byte hide a name. Red (exit 1)
+with one line per finding:
+
+  docs/setup.md:12: matches pattern #2
+
+A finding names the file, the line and the pattern's index, never the
+matched text: CI logs of public repositories are public, and printing the
+name would leak it again. Patterns match anywhere in a line; anchors
+(^ $) anchor to the line, and a CRLF line is matched without its CR.
+Paths are matched too: as a whole, per component, and per dot-separated
+piece and dot-ended prefix of a component (host-7.tar.gz tries host-7).
+A path that matches is a finding (\"<path>: its path matches pattern
+#n\"), and wherever it would be printed it reads <tracked path N> instead,
+N being its line in git ls-files output. A symlink is scanned as its blob,
+the target text; a submodule has no blob here and is skipped.
+
+Patterns file: one Rust regex per line; blank lines and lines starting with
+# are skipped; patterns are numbered from 1 in file order. Use (?i) for
+case-insensitive matching. A pattern that matches the empty string is
+refused. A patterns file with no patterns is red (nothing compared).
+
+Allow file: one repository-relative path per line; a path ending in / allows
+everything under that directory. Wildcards, absolute paths and .. are
+refused. Each allowed path is printed as skipped.
+
+Keep exact private names out of public repositories: a tracked list of them
+is itself the leak. Shape patterns that name nothing (for example
+[a-z]+-ci-[0-9]+) can be tracked.
+
+Blind to: git history (it stops new leaks, it does not scrub old ones);
+names split across lines, encoded (base64, URL escapes) or compressed
+(inside an archive or image format); untracked and generated files; text
+outside the repository (issues, pull request text, release notes).
+
+Exit: 0 passed, 1 a finding or no patterns, 2 could not run (not a git work
+tree, a tracked path that is not UTF-8, a file that exists but cannot be
+read, a bad pattern or allow line).
+";
+
+pub const TOPICS: [(&str, &str, &str); 5] = [
     (
         "verdict",
         "the required / verdict decision and its self-test",
@@ -187,6 +236,7 @@ pub const TOPICS: [(&str, &str, &str); 4] = [
         "every Cargo workspace has a committed lock",
         LOCKFILES,
     ),
+    ("names", "no tracked file contains a private name", NAMES),
 ];
 
 pub fn list() -> String {

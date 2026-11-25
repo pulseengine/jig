@@ -4,6 +4,13 @@ jig is below 1.0 (REQ-020). Callers pin the record commit that follows each
 signed tag, never the tag commit (docs/releasing.md). Releases before v0.1.6
 are described in their GitHub release notes.
 
+## Unreleased
+
+- `jig names`: refuses a tracked file that matches one of the caller's
+  private-name patterns, and prints the file, line and pattern index, never
+  the match (REQ-026, jig#17, `jig docs names`). baseline.yml does not run
+  it yet: where the exact names come from in CI is an owner decision.
+
 ## v0.1.6 (2026-11-25)
 
 - supply: every Cargo workspace found from the tracked Cargo.toml files

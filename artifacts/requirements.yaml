@@ -419,3 +419,22 @@ artifacts:
         target: REQ-006
       - type: constraint-satisfies
         target: SC-5
+
+  - id: REQ-026
+    type: requirement
+    title: jig names refuses a private name in a tracked file without printing it
+    status: draft
+    description: >
+      jig names shall read every file in the index as git publishes it (its
+      index blob, not the work tree), not on the caller's allow list, binary files included, and fail when a line
+      matches one of the caller's patterns. A finding shall give the file, the
+      line and the pattern's index, never the matched text. A patterns file
+      with no patterns shall fail; a bad pattern, or one that matches the
+      empty string, shall stop the check (could not run). Where the exact
+      private names come from in CI is an open owner decision
+      (20261125T144454-ef84c1); baseline.yml does not run jig names yet.
+    release: v0.1.7
+    fields: {priority: must, category: functional}
+    links:
+      - type: satisfies
+        target: SSC-6

@@ -1,0 +1,3 @@
+# Shape patterns for jig's own names controls (REQ-026). Synthetic: they
+# name no real host. Planted files under ci-controls/ match pattern #1.
+zz-planted-ci-[0-9]+
