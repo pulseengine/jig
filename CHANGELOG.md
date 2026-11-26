@@ -4,7 +4,7 @@ jig is below 1.0 (REQ-020). Callers pin the record commit that follows each
 signed tag, never the tag commit (docs/releasing.md). Releases before v0.1.6
 are described in their GitHub release notes.
 
-## Unreleased
+## v0.1.7 (2026-11-26)
 
 - `jig names`: refuses a tracked file that matches one of the caller's
   private-name patterns, and prints the file, line and pattern index, never
@@ -17,6 +17,8 @@ are described in their GitHub release notes.
   names a tracked allow file. Exact names are not accepted as an input:
   GitHub prints a step's env values in the log before the step runs
   (owner, 2026-11-25: shape patterns only, fail closed).
+- A grouped monthly Dependabot config (github-actions and cargo; planted
+  fixtures under ci-controls/fixtures are excluded).
 
 ## v0.1.6 (2026-11-25)
 
