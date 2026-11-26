@@ -213,7 +213,8 @@ Keep exact private names out of public repositories: a tracked list of them
 is itself the leak. Shape patterns that name nothing (for example
 [a-z]+-ci-[0-9]+) can be tracked.
 baseline.yml's pins job runs jig names with the names-patterns input (a
-tracked shapes file, or none to opt out; empty or untracked is red) and
+tracked shapes file, or none to opt out, reported as a \"names: off\"
+warning and job summary line; empty or untracked is red) and
 names-allow; exact names are not taken as an input, since GitHub prints a
 step's env values in the log before the step runs.
 

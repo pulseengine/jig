@@ -230,3 +230,11 @@ run = 'NAMES_PATTERNS=$(cat ci-controls/fixtures/names-input) NAMES_ALLOW=ci-con
 plant = "ci-controls/names-step-planted-host"
 stderr_or_stdout_matches = '.'
 shallow_git = true
+
+[[control]]
+id = "stand-in-names-input-none-reported"
+check = "names: none passes silently"
+run = 's=$(mktemp); o=$(mktemp); p=$(cat ci-controls/fixtures/names-input); if [ "$p" = none ]; then echo "names-patterns: none" > "$o"; else jig names . --patterns "$p" --allow ci-controls/fixtures/names-allow.txt > "$o"; fi; rc=$?; cat "$o"; [ "$rc" -eq 0 ] || exit 2; if grep -q "^::warning title=names: off::" "$o" && grep -q "^names: off" "$s"; then echo "reported: names off"; exit 1; fi'
+plant = "ci-controls/names-input-none"
+stderr_or_stdout_matches = '.'
+shallow_git = true

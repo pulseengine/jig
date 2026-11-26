@@ -312,3 +312,16 @@ run = 'git add -A && NAMES_PATTERNS=$(cat ci-controls/fixtures/names-input) NAME
 plant = "ci-controls/names-step-planted-host"
 stderr_or_stdout_matches = 'docs/zz-planted-step.md:2: matches pattern #1'
 shallow_git = true
+
+# rivet: verifies REQ-026
+# names-patterns: none is an opt-out, not a failure; this control proves it is
+# reported. The run is red only when the step's output carries the
+# "names: off" warning annotation and the job summary carries "names: off".
+# A step that fails is exit 2 (no output match), never a pass.
+[[control]]
+id = "names-input-none-reported"
+check = "names: baseline / pins (names: off is reported)"
+run = 's=$(mktemp); o=$(mktemp); GITHUB_STEP_SUMMARY=$s NAMES_PATTERNS=$(cat ci-controls/fixtures/names-input) NAMES_ALLOW=ci-controls/fixtures/names-allow.txt bash ci-controls/names.sh > "$o"; rc=$?; cat "$o"; [ "$rc" -eq 0 ] || exit 2; if grep -q "^::warning title=names: off::" "$o" && grep -q "^names: off" "$s"; then echo "reported: names off"; exit 1; fi'
+plant = "ci-controls/names-input-none"
+stderr_or_stdout_matches = 'reported: names off'
+shallow_git = true
