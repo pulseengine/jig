@@ -31,6 +31,11 @@ are described in their GitHub release notes.
   without a hang (kiln#748).
   It hung in component mode too (jig#40) and is parked again until kiln
   v0.9.1 ships #737.
+- release.yml: each release also ships `jig-<tag>-wasm32-wasip2.wasm`, jig
+  as a WASI 0.2 component, checked under wasmtime 51.0.0 against native jig
+  from the same commit before signing; it is covered by SHA256SUMS.txt and
+  its cosign signature and has SLSA provenance (REQ-030). First in the next
+  tagged release.
 
 ## v0.1.8 (2026-11-27)
 

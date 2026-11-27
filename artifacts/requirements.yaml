@@ -496,3 +496,21 @@ artifacts:
     links:
       - type: refines
         target: REQ-028
+
+  - id: REQ-030
+    type: requirement
+    title: Each jig release ships jig as a signed wasm32-wasip2 component
+    status: draft
+    description: >
+      release.yml shall build jig for wasm32-wasip2 from the tagged commit,
+      check the module under the pinned, sha256-checked wasmtime against a
+      native jig from the same commit on REQ-028's inputs and against the
+      tag's version, require its wasi:cli/exit exit-with-code import, and
+      publish it as jig-<tag>-wasm32-wasip2.wasm before SHA256SUMS.txt is
+      generated, so the cosign signature covers it,
+      with SLSA build provenance like the archives. A failed check stops the
+      release.
+    fields: {priority: should, category: functional}
+    links:
+      - type: refines
+        target: REQ-028
