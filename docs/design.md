@@ -185,6 +185,11 @@ with a queue, so `enforce-skips` stays false until a repo has one.
   proves. relay's gates span ci.yml, kani.yml and verus.yml: one
   verdict per workflow (required-ci, required-kani, required-verus), the
   baseline hosted and judged in ci.yml only (REQ-024, temper#106).
+  Adoption checklist: once a repo calls jig, `required / verdict` and
+  `baseline / guard` join its required checks, beside the old list (owner,
+  2026-11-27). A caller that wires jig without requiring them merges past a
+  red verdict: warte#227 merged with `baseline / controls` and the verdict
+  red. `jig docs caller` gives the maintainer-shell check.
 - **Phase 2, enforce**: relay sets `enforce-skips: true` and moves protection
   to `required / verdict`, old contexts kept one more week. warte gets a queue
   before it enforces.

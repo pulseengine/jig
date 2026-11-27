@@ -131,6 +131,20 @@ over the repository's required contexts.
 Blind to: job-level permissions: a job may still widen its own token.
 Blind to: the classify job's checkout. It needs fetch-depth: 0 and no
 filter:, or sieve falls back to every class (fail closed, slow).
+Blind to: branch protection. A caller that wires jig but does not require
+its checks merges past a red verdict (warte#227, 2026-11-27). Reading
+protection needs admin scope, which a caller's contents: read token lacks,
+so check it from a maintainer shell after adopting:
+
+  gh api repos/OWNER/REPO/branches/main/protection \\
+      --jq '.required_status_checks.contexts'
+  gh api repos/OWNER/REPO/rules/branches/main \\
+      --jq '.[] | select(.type == \"required_status_checks\")
+            | .parameters.required_status_checks[].context'
+
+Between them the two lists must contain \"required / verdict\" and
+\"baseline / guard\". A ruleset or classic protection may hold them; the
+first command answers 404 \"Branch not protected\" when only a ruleset applies.
 
 Exit: 0 passed, 1 failed, 2 could not run (unreadable or unparseable
 workflow, YAML merge key, no jobs mapping).
