@@ -4,7 +4,7 @@ jig is below 1.0 (REQ-020). Callers pin the record commit that follows each
 signed tag, never the tag commit (docs/releasing.md). Releases before v0.1.6
 are described in their GitHub release notes.
 
-## Unreleased
+## v0.1.8 (2026-11-27)
 
 - `jig confined`: judges runner confinement by what the kernel refuses (a
   write outside the grants, a read of a denied path, on targets the job's

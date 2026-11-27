@@ -457,6 +457,7 @@ artifacts:
       "true", which is set only together with the "confined" label in the
       guard job's fixed runs-on; the skip shall key on runner.environment
       (GitHub-hosted), never on a missing label.
+    release: v0.1.8
     fields: {priority: must, category: functional}
     links:
       - type: satisfies
