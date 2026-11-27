@@ -14,12 +14,12 @@ both() {
   n=$(printf '%s\n' "$n" | sed -E 's/ \(os error [0-9]+\)//')
   w=$(printf '%s\n' "$w" | sed -E 's/ \(os error [0-9]+\)//')
   if [ "$n" != "$w" ] || [ "$nc" != "$wc" ]; then
-    echo "wasm differs from native: jig $* (native exit $nc, wasm exit $wc)"
+    echo "wasm differs from native under ${WASM_RUNNER:-wasmtime}: jig $* (native exit $nc, wasm exit $wc)"
     diff <(printf '%s\n' "$n") <(printf '%s\n' "$w") || true
     exit 1
   fi
   [ "$nc" = "$want" ] || { printf '%s\n' "$n"; echo "jig $*: exit $nc, expected $want"; exit 1; }
-  echo "same under wasmtime and native (exit $nc): jig $*"
+  echo "same under ${WASM_RUNNER:-wasmtime} and native (exit $nc): jig $*"
 }
 both . 0 pins .
 both . 0 verdict --self-test

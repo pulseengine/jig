@@ -17,6 +17,12 @@ are described in their GitHub release notes.
   `baseline / guard`, or it merges past a red verdict (warte#227); two
   `gh api` commands check it from a maintainer shell. design.md adds the
   same line to the adoption checklist (owner, 2026-11-27).
+- CI: advisory job `kiln` fuses the wasm32-wasip2 jig with meld 0.70.0
+  (`--reproducible --memory multi`, fused twice, byte-identical) and runs
+  it under kiln 0.9.0 against native jig on REQ-028's four inputs
+  (REQ-029). It never gates: continue-on-error, listed in the verdict's
+  advisory. Each kiln call is capped at 120 s and a timeout reads "kiln
+  hung (kiln#748)"; the job is capped at 20 minutes.
 
 ## v0.1.8 (2026-11-27)
 
