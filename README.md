@@ -32,7 +32,7 @@ check to prove it can go red; jig runs its own (`ci-controls.toml`) and
 shows that stand-ins which cannot fail are reported FAIL-OPEN
 (`ci-controls.stand-in.toml`).
 
-**Status: work in progress, pre-1.0.** jig v0.1.0 to v0.1.8 are signed
+**Status: work in progress, pre-1.0.** jig v0.1.0 to v0.1.9 are signed
 prereleases; v0.1.5 and later run plant v0.5.0 (earlier ones, v0.4.0).
 warte calls jig in
 shadow mode since [warte#194](https://github.com/pulseengine/warte/pull/194)
