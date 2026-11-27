@@ -348,3 +348,15 @@ check = "confined: baseline / guard (labels are not evidence)"
 run = 'r=$(cat ci-controls/fixtures/confined-runner); if [ "$r" = github-hosted ]; then echo "confined: not applicable (hosted fork runner)"; exit 0; fi; JIG_PROBE=$JIG RUNNER_TEMP=$(mktemp -d) CONFINED_WRITE=$PWD/zz-confined-probe/write-target CONFINED_READ=$PWD/zz-confined-probe/secret ZWINGER_PROFILE=github-runner ZWINGER_GRANTS=/tmp bash ci-controls/confined.sh'
 plant = "ci-controls/confined-unconfined"
 stderr_or_stdout_matches = 'confined: not confined'
+
+# rivet: verifies REQ-028
+# The wasm-vs-native comparison itself: with a stand-in runner that adds one
+# line to native jig's output, the comparison must be red. Unplanted, the shim
+# runs native jig unchanged (green). CI runs the same script with the pinned
+# wasmtime and the real wasm32-wasip2 build.
+[[control]]
+id = "wasm-native-differs"
+check = "wasm: jig under wasmtime matches native (ci.yml / test)"
+run = 'WASMTIME=$PWD/ci-controls/fixtures/wasmtime-shim JIG_WASM=ci-controls/fixtures/wasmtime-shim bash ci-controls/wasm-native.sh'
+plant = "ci-controls/wasm-native-differs"
+stderr_or_stdout_matches = 'wasm differs from native'

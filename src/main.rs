@@ -142,7 +142,7 @@ fn main() -> ExitCode {
         } => {
             let delegated = match verdict::parse_delegated(&delegated) {
                 Ok(d) => d,
-                Err(e) => return ExitCode::from(could_not_run(cli.format, &e)),
+                Err(e) => return exit(could_not_run(cli.format, &e)),
             };
             let opts = verdict::Opts {
                 self_job,
@@ -189,6 +189,26 @@ fn main() -> ExitCode {
         } => run_confined(cli.format, &granted, &write, &read),
         Cmd::Docs { topic } => run_docs(topic.as_deref()),
     };
+    exit(code)
+}
+
+/// On wasm32-wasip2 a code returned from main other than 0 or 1 reaches the
+/// host as 1, so exit 2 ("could not run") would read as a red verdict.
+/// std::process::exit keeps it: Rust 1.100's std calls wasi:cli/exit's
+/// exit-with-code (measured on wasmtime 51.0.0: ExitCode::from(2) arrives as
+/// 1, process::exit(2) as 2; temper saw the same on wasmtime 50.0.1 and kiln
+/// 0.9.0; Rust 1.99's std has no exit-with-code). stdout and stderr are
+/// flushed first, since exit runs no destructors.
+#[cfg(target_os = "wasi")]
+fn exit(code: u8) -> ExitCode {
+    use std::io::Write;
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+    std::process::exit(i32::from(code))
+}
+
+#[cfg(not(target_os = "wasi"))]
+fn exit(code: u8) -> ExitCode {
     ExitCode::from(code)
 }
 

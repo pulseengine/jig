@@ -1,0 +1,7 @@
+#!/bin/sh
+# Planted: a runner whose output differs from native by one line.
+shift 3
+"$JIG" "$@"
+rc=$?
+echo "planted: one extra line"
+exit $rc

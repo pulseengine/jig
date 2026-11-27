@@ -1,0 +1,5 @@
+#!/bin/sh
+# Stands in for wasmtime in the wasm-native-differs control: "run --dir=. <wasm>
+# args..." runs the native jig, so the comparison sees identical output.
+shift 3
+exec "$JIG" "$@"
