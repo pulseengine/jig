@@ -4,7 +4,7 @@ jig is below 1.0 (REQ-020). Callers pin the record commit that follows each
 signed tag, never the tag commit (docs/releasing.md). Releases before v0.1.6
 are described in their GitHub release notes.
 
-## Unreleased
+## v0.1.9 (2026-11-27)
 
 - CI runs jig's wasm32-wasip2 build under wasmtime 51.0.0 and compares
   stdout, stderr and exit code with the native binary on four inputs,

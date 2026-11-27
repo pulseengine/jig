@@ -476,6 +476,7 @@ artifacts:
       input shall be red in both. A difference fails CI. jig confined is
       native only (it tests kernel refusals); jig lockfiles and jig names
       spawn cargo and git and are not run as wasm yet.
+    release: v0.1.9
     fields: {priority: should, category: functional}
     links:
       - type: refines
@@ -492,6 +493,7 @@ artifacts:
       a pinned, sha256-checked kiln on REQ-028's inputs with the same
       comparison against native jig. The job is advisory (continue-on-error,
       listed in the verdict's advisory) until the owner makes it gating.
+    release: v0.1.9
     fields: {priority: could, category: functional}
     links:
       - type: refines
@@ -510,6 +512,7 @@ artifacts:
       generated, so the cosign signature covers it,
       with SLSA build provenance like the archives. A failed check stops the
       release.
+    release: v0.1.9
     fields: {priority: should, category: functional}
     links:
       - type: refines
