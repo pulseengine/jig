@@ -4,6 +4,19 @@ jig is below 1.0 (REQ-020). Callers pin the record commit that follows each
 signed tag, never the tag commit (docs/releasing.md). Releases before v0.1.6
 are described in their GitHub release notes.
 
+## Unreleased
+
+- `jig confined`: judges runner confinement by what the kernel refuses (a
+  write outside the grants, a read of a denied path, on targets the job's
+  own user owns), after a positive control; `ZWINGER_*` env vars are
+  labels only (REQ-027, `jig docs confined`).
+- baseline: the guard job carries the confinement probe on zwinger's decoy
+  paths, inert while `JIG_CONFINED` is "false". It turns on in a later
+  change together with the `confined` runner label, once a confined runner
+  is online (DD-020; owner approved the joint zwinger proposal 2026-11-27).
+  Nothing changes for callers today.
+- `jig docs names`: pre-check a shapes file with `jig names`, not grep -E.
+
 ## v0.1.7 (2026-11-26)
 
 - `jig names`: refuses a tracked file that matches one of the caller's

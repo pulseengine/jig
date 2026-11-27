@@ -412,3 +412,36 @@ artifacts:
     links:
       - type: satisfies
         target: REQ-026
+
+  - id: DD-020
+    type: design-decision
+    title: Confinement probe lands inert, then flips with the runner label
+    status: draft
+    fields:
+      decision: >
+        baseline.yml's guard job carries the jig confined probe (step text
+        ci-controls/confined.sh, kept equal by tests/supply.rs) behind the
+        workflow-level JIG_CONFINED, "false" today. One later change sets it
+        "true" and adds "confined" to the guard job's runs-on; a test keeps the
+        two paired. Targets are zwinger's decoys /var/lib/zwinger-probe/
+        write-target and /secret, owned by the runner user and outside every
+        grant, so a refusal can only come from the confinement. Controls run
+        the step text on a planted self-hosted, unconfined runner (red) and
+        with forged labels (red); stand-ins that trust the labels or skip
+        without one report FAIL-OPEN.
+      rationale: >
+        0 runners carry "confined" today (pulseengine.eu, zwinger,
+        2026-11-27), and jig's own CI calls this baseline, so adding the label
+        now would queue jig's guard job forever and block its merge queue.
+        Labels in env are forgeable through GITHUB_ENV; a kernel refusal on a
+        path DAC allows is not. Owner approved the joint proposal (zwinger,
+        kapsel, jig, plant and the runner operator) on 2026-11-27.
+      alternatives: >
+        Trust ZWINGER_PROFILE/ZWINGER_GRANTS (rejected: forgeable); probe a
+        root-only path such as /root (rejected: refused unconfined too, so it
+        proves nothing); make confined a caller input (rejected: a caller could
+        drop it; the pool stays fixed); wait for zwinger's status JSON
+        (zwinger#37, no ETA; it will be added as a label next to the probe).
+    links:
+      - type: satisfies
+        target: REQ-027

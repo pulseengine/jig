@@ -77,3 +77,58 @@ fn private_names_step_matches_control_script() {
         script_body("ci-controls/names.sh")
     );
 }
+
+// rivet: verifies REQ-027
+#[test]
+fn confined_probe_step_matches_control_script() {
+    let wf = fs::read_to_string(".github/workflows/baseline.yml").unwrap();
+    assert_eq!(
+        step_body(&wf, "confined probe"),
+        script_body("ci-controls/confined.sh")
+    );
+    // The guard job's jig install is the pins job's, so a pinned release and
+    // jig-from-source behave the same in both.
+    assert_eq!(
+        step_body(&wf, "install jig for the confined probe"),
+        step_body(&wf, "install jig")
+    );
+}
+
+/// The probe and the label move together: "confined" in the guard job's
+/// runs-on if and only if JIG_CONFINED is "true". The probe skips only on a
+/// GitHub-hosted runner (runner.environment), never on a missing ZWINGER_*
+/// label, so an unconfined self-hosted run still goes red.
+// rivet: verifies REQ-027
+#[test]
+fn confined_label_and_probe_flag_are_paired() {
+    let wf = fs::read_to_string(".github/workflows/baseline.yml").unwrap();
+    let flag = wf
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("JIG_CONFINED: "))
+        .expect("JIG_CONFINED is set at workflow level");
+    let on = match flag {
+        "\"true\"" => true,
+        "\"false\"" => false,
+        other => panic!("JIG_CONFINED must be \"true\" or \"false\", not {other}"),
+    };
+    let lines: Vec<&str> = wf.lines().collect();
+    let guard = lines.iter().position(|l| *l == "  guard:").unwrap();
+    let runs_on = lines[guard..]
+        .iter()
+        .find(|l| l.trim_start().starts_with("runs-on:"))
+        .unwrap();
+    assert_eq!(runs_on.contains("\"confined\""), on, "{runs_on}");
+    let probe = lines
+        .iter()
+        .position(|l| l.trim() == "- name: confined probe")
+        .unwrap();
+    let cond = lines[probe + 1].trim();
+    assert_eq!(
+        cond,
+        "if: env.JIG_CONFINED == 'true' && runner.environment == 'self-hosted'"
+    );
+    assert!(
+        !wf.contains("if: env.ZWINGER"),
+        "a ZWINGER_* label must never gate the probe"
+    );
+}

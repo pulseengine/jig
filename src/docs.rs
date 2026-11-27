@@ -204,6 +204,9 @@ Patterns file: one Rust regex per line; blank lines and lines starting with
 # are skipped; patterns are numbered from 1 in file order. Use (?i) for
 case-insensitive matching. A pattern that matches the empty string is
 refused. A patterns file with no patterns is red (nothing compared).
+Pre-check a shapes file with jig names itself, not grep -E: \\b and other
+Rust regex syntax are not POSIX ERE; git grep -E on macOS reported no
+match for \\b where there were matches, not an error (warte, 2026-11-26).
 
 Allow file: one repository-relative path per line; a path ending in / allows
 everything under that directory. Wildcards, absolute paths and .. are
@@ -228,7 +231,52 @@ tree, a tracked path that is not UTF-8, a file that exists but cannot be
 read, a bad pattern or allow line).
 ";
 
-pub const TOPICS: [(&str, &str, &str); 5] = [
+const CONFINED: &str = "\
+jig confined: is this job confined? Judged by what the kernel refuses (REQ-027)
+
+  jig confined --granted DIR --write PATH --read PATH [--format text|json]
+
+First a positive control: a file created, written and read back under DIR
+(a granted directory, $RUNNER_TEMP in CI) must work, or nothing can be
+judged (exit 2). Then two probes:
+  - write: create a new file next to PATH (a unique name is appended);
+  - read: open PATH (a directory is listed).
+A probe counts as confined only when it fails with EACCES (or, off Linux,
+EPERM) although Unix permissions plainly allow it: the target (for write,
+its directory) is owned by the job's user and the owner bits allow the
+access. A target owned by anyone else is not judged, since group bits, ACL
+entries or supplementary groups could refuse it; on Linux EPERM is not
+judged, since an immutable or append-only attribute gives it; a target
+whose stat fails is not judged, since an ancestor without search
+permission refuses that too (Landlock does not restrict stat). Such a
+refusal proves nothing and is \"cannot judge\". A probe that succeeds is
+\"NOT confined\"; a probe file it created is removed.
+
+ZWINGER_PROFILE and ZWINGER_GRANTS are printed only as set or unset, as
+labels: any earlier step can write them through GITHUB_ENV, so they are
+never evidence. Paths and label values are not printed.
+
+baseline.yml's guard job runs this against zwinger's decoy paths
+(/var/lib/zwinger-probe/write-target and /var/lib/zwinger-probe/secret,
+which the deployment configuration creates outside every grant, owned by
+the runner user) when JIG_CONFINED is \"true\" and the runner is
+self-hosted. While JIG_CONFINED is \"false\" the steps do not run. It turns
+\"true\" only together with adding \"confined\" to the guard job's runs-on,
+once the runner operator reports a confined runner online. A GitHub-hosted
+(fork) runner prints \"confined: not applicable\"; the skip keys on
+runner.environment, never on a missing label.
+
+Blind to: grants other than the two probed paths (a profile that grants
+more than it should elsewhere passes; zwinger's own checks cover the
+profile); network confinement; a probe binary swapped on the runner (it is
+fetched by pinned sha256, not re-checked).
+
+Exit: 0 confined (both probes refused by the kernel), 1 not confined (a
+probe succeeded), 2 could not judge (positive control failed, a target is
+missing, the permissions already refuse it, or another errno).
+";
+
+pub const TOPICS: [(&str, &str, &str); 6] = [
     (
         "verdict",
         "the required / verdict decision and its self-test",
@@ -242,6 +290,11 @@ pub const TOPICS: [(&str, &str, &str); 5] = [
         LOCKFILES,
     ),
     ("names", "no tracked file contains a private name", NAMES),
+    (
+        "confined",
+        "runner confinement judged by kernel refusals",
+        CONFINED,
+    ),
 ];
 
 pub fn list() -> String {

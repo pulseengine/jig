@@ -325,3 +325,26 @@ run = 's=$(mktemp); o=$(mktemp); GITHUB_STEP_SUMMARY=$s NAMES_PATTERNS=$(cat ci-
 plant = "ci-controls/names-input-none"
 stderr_or_stdout_matches = 'reported: names off'
 shallow_git = true
+
+# rivet: verifies REQ-027
+# The confined probe's text (ci-controls/confined.sh) on a self-hosted runner
+# that is not confined: both zwinger decoy probes succeed, so it is red. The
+# fixture switch mirrors the guard step's conditions: unplanted, the runner is
+# GitHub-hosted (not applicable, green); planted, it is self-hosted. The
+# decoy targets sit in the plant, as the deployment configuration puts them on a runner.
+[[control]]
+id = "confined-unconfined"
+check = "confined: baseline / guard"
+run = 'r=$(cat ci-controls/fixtures/confined-runner); if [ "$r" = github-hosted ]; then echo "confined: not applicable (hosted fork runner)"; exit 0; fi; RUNNER_TEMP=$(mktemp -d) CONFINED_WRITE=$PWD/zz-confined-probe/write-target CONFINED_READ=$PWD/zz-confined-probe/secret bash ci-controls/confined.sh'
+plant = "ci-controls/confined-unconfined"
+stderr_or_stdout_matches = 'confined: not confined'
+
+# rivet: verifies REQ-027
+# The same runner with ZWINGER_PROFILE and ZWINGER_GRANTS forged, as any
+# earlier step could through GITHUB_ENV: labels are not evidence, still red.
+[[control]]
+id = "confined-forged-labels"
+check = "confined: baseline / guard (labels are not evidence)"
+run = 'r=$(cat ci-controls/fixtures/confined-runner); if [ "$r" = github-hosted ]; then echo "confined: not applicable (hosted fork runner)"; exit 0; fi; RUNNER_TEMP=$(mktemp -d) CONFINED_WRITE=$PWD/zz-confined-probe/write-target CONFINED_READ=$PWD/zz-confined-probe/secret ZWINGER_PROFILE=github-runner ZWINGER_GRANTS=/tmp bash ci-controls/confined.sh'
+plant = "ci-controls/confined-unconfined"
+stderr_or_stdout_matches = 'confined: not confined'
