@@ -23,6 +23,9 @@ are described in their GitHub release notes.
   (REQ-029). It never gates: continue-on-error, listed in the verdict's
   advisory. Each kiln call is capped at 120 s and a timeout reads "kiln
   hung (kiln#748)"; the job is capped at 20 minutes.
+  Parked behind `KILN_PARKED: "true"`: kiln 0.9.0 hung on its first call on
+  the x86_64 Linux runner (merge-group run 46029354661), as for sieve; it
+  comes back with the kiln release that ships kiln#737.
 
 ## v0.1.8 (2026-11-27)
 

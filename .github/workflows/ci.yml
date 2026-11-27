@@ -50,6 +50,12 @@ env:
   MELD_SHA256: 9ff3e50d538a54fd129a8962733b766569218eb9dbb8b9be642b389b6063895c
   KILN_VERSION: v0.9.0
   KILN_SHA256: 768a1f5971656635d24b614d48fb50337e810da0e8c8006f8e863d40bc550ec2
+  # The kiln job is parked (2026-11-27): kiln 0.9.0 hung on the first call on
+  # the x86_64 Linux runner (merge-group run 46029354661: "kiln hung
+  # (kiln#748): no result after 120 s"), as it did for sieve. kiln#748 is
+  # kiln#737, fixed on kiln main; set "false" together with the KILN_VERSION
+  # and KILN_SHA256 of the kiln release that ships it.
+  KILN_PARKED: "true"
 
 jobs:
   rivet:
@@ -228,20 +234,29 @@ jobs:
   # it warns about our own chain and can never gate.
   kiln:
     name: jig fused by meld under kiln
+    # Parked while KILN_PARKED is "true" (see env): every step below skips and
+    # the job passes in seconds; the verdict lists it as advisory either way.
     continue-on-error: true
     # Fork PRs never reach self-hosted runners (fail-closed same-repo guard).
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
     # Each kiln call is capped at 120 s by ci-controls/kiln-run (kiln#748).
     timeout-minutes: 20
     steps:
+      - name: kiln parked (kiln#748)
+        if: env.KILN_PARKED == 'true'
+        run: |
+          echo "kiln job parked: kiln 0.9.0 hangs on x86_64 Linux (kiln#748); unpark with the kiln release that ships kiln#737"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.KILN_PARKED != 'true'
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, 2026-11-15
+        if: env.KILN_PARKED != 'true'
         with:
           toolchain: 1.100.0
           targets: wasm32-wasip2
       - name: fetch pinned meld and kiln
+        if: env.KILN_PARKED != 'true'
         run: |
           d="$RUNNER_TEMP/chain"; mkdir -p "$d"; cd "$d"
           m="meld-$MELD_VERSION-x86_64-unknown-linux-musl.tar.gz"
@@ -254,6 +269,7 @@ jobs:
           ./meld --version
           ./kiln --version
       - name: jig fused by meld under kiln matches native
+        if: env.KILN_PARKED != 'true'
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/kiln-target
         run: |
