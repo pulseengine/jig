@@ -14,6 +14,10 @@ should own alone:
 - the private-name check: no tracked file or path matches the caller's
   shape patterns (input `names-patterns`, a tracked file, or `none`; empty
   is red), and a finding never prints the match (`jig docs names`);
+- the runner confinement probe (inert until a confined runner is online):
+  on a runner labelled `confined`, a write and a read on zwinger's decoy
+  paths must be refused by the kernel; `ZWINGER_*` env vars are labels,
+  never evidence (`jig docs confined`);
 - the action-pin check: every `uses:` is a 40-hex SHA and every Rust
   toolchain a literal version (`jig pins`);
 - the verdict's reading of sieve: a skip passes only for a class the

@@ -238,3 +238,23 @@ run = 's=$(mktemp); o=$(mktemp); p=$(cat ci-controls/fixtures/names-input); if [
 plant = "ci-controls/names-input-none"
 stderr_or_stdout_matches = '.'
 shallow_git = true
+
+# rivet: verifies REQ-027
+# A check that trusts the labels: forged labels pass it (FAIL-OPEN).
+[[control]]
+id = "stand-in-confined-forged-labels"
+check = "confined: ZWINGER_* labels taken as evidence"
+run = 'r=$(cat ci-controls/fixtures/confined-runner); if [ "$r" = github-hosted ]; then exit 0; fi; export ZWINGER_PROFILE=github-runner ZWINGER_GRANTS=/tmp; [ -n "$ZWINGER_PROFILE" ] && [ -n "$ZWINGER_GRANTS" ] && echo "confined (labels)"'
+plant = "ci-controls/confined-unconfined"
+stderr_or_stdout_matches = '.'
+
+# rivet: verifies REQ-027
+# A probe that skips when the label is absent: an unconfined self-hosted run
+# without zwinger passes it (FAIL-OPEN). The real skip keys on
+# runner.environment only.
+[[control]]
+id = "stand-in-confined-skip-without-label"
+check = "confined: skipped when ZWINGER_PROFILE is unset"
+run = 'r=$(cat ci-controls/fixtures/confined-runner); if [ "$r" = github-hosted ]; then echo "confined: not applicable (hosted fork runner)"; exit 0; fi; [ -n "$ZWINGER_PROFILE" ] || { echo "confined: not applicable"; exit 0; }; JIG_PROBE=$JIG RUNNER_TEMP=$(mktemp -d) CONFINED_WRITE=$PWD/zz-confined-probe/write-target CONFINED_READ=$PWD/zz-confined-probe/secret bash ci-controls/confined.sh'
+plant = "ci-controls/confined-unconfined"
+stderr_or_stdout_matches = '.'

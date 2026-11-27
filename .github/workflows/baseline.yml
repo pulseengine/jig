@@ -70,7 +70,7 @@ env:
   # jig itself: set by the commit that follows each signed jig release
   # (docs/releasing.md). v0.1.7: sha256 of the x86_64 musl archive from
   # SHA256SUMS.txt, verified with cosign against release.yml@refs/tags/v0.1.7
-  # on 2026-11-25.
+  # on 2026-11-26.
   JIG_VERSION: v0.1.7
   JIG_SHA256: e5a3d70d0bded3fee3352036c10ee389ac8314c9f8eb90fd9b95d2c9cc5e7f28
   # plant v0.5.0 (carries plant#34 trusted_workflows, plant#38 .planted names),
@@ -78,6 +78,10 @@ env:
   # release.yml@refs/tags/v0.5.0 on 2026-11-25.
   PLANT_VERSION: v0.5.0
   PLANT_SHA256: 8998648bbea539d57e048ad8782aad7743f4b15f3b2b2e7b9e9e40d178a0a09c
+  # Runner confinement probe (REQ-027): "false" until the runner operator reports a
+  # confined runner online; turned "true" only together with adding
+  # "confined" to the guard job's runs-on (tests/supply.rs keeps them paired).
+  JIG_CONFINED: "false"
 
 jobs:
   guard:
@@ -102,6 +106,39 @@ jobs:
         run: |
           plant --version
           if [ -n "$GUARD_CONFIG" ]; then plant guard . --config "$GUARD_CONFIG"; else plant guard .; fi
+      # Runner confinement (REQ-027, DD-020): judged only by what the kernel
+      # refuses on zwinger's decoy paths; ZWINGER_* env vars are labels, since
+      # any earlier step can forge them through GITHUB_ENV. Inert while
+      # JIG_CONFINED is "false": it turns "true" in the same change that adds
+      # "confined" to this job's runs-on, after the runner operator reports a confined
+      # runner online. A hosted (fork) runner is never confined and says so.
+      # The probe is always the pinned, sha256-checked release, never built
+      # from the code under test (jig-from-source does not apply here): a
+      # build runs dependency build scripts in this job, which could fake the
+      # result. It is called by absolute path, not through GITHUB_PATH, and
+      # LD_PRELOAD / LD_LIBRARY_PATH are cleared for it.
+      - name: fetch pinned jig for the confined probe
+        if: env.JIG_CONFINED == 'true' && runner.environment == 'self-hosted'
+        run: |
+          [ -n "$JIG_SHA256" ] || { echo "no jig release is pinned in this baseline.yml"; exit 1; }
+          d="$RUNNER_TEMP/jig-probe"; mkdir -p "$d"
+          a="jig-$JIG_VERSION-x86_64-unknown-linux-musl.tar.gz"
+          (cd "$d" && curl -fsSL -o "$a" "https://github.com/pulseengine/jig/releases/download/$JIG_VERSION/$a" \
+            && echo "$JIG_SHA256  $a" | sha256sum -c - && tar -xzf "$a" ./jig)
+      - name: confined probe
+        if: env.JIG_CONFINED == 'true' && runner.environment == 'self-hosted'
+        env:
+          JIG_PROBE: ${{ runner.temp }}/jig-probe/jig
+          LD_PRELOAD: ""
+          LD_LIBRARY_PATH: ""
+          CONFINED_WRITE: /var/lib/zwinger-probe/write-target
+          CONFINED_READ: /var/lib/zwinger-probe/secret
+        run: |
+          "$JIG_PROBE" confined --granted "$RUNNER_TEMP" --write "$CONFINED_WRITE" --read "$CONFINED_READ"
+      - name: confined probe (hosted runner)
+        if: env.JIG_CONFINED == 'true' && runner.environment == 'github-hosted'
+        run: |
+          echo "confined: not applicable (hosted fork runner)"
 
   pins:
     name: pins

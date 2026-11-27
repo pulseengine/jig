@@ -439,3 +439,25 @@ artifacts:
     links:
       - type: satisfies
         target: SSC-6
+
+  - id: REQ-027
+    type: requirement
+    title: The baseline judges runner confinement by kernel refusals, never by labels
+    status: draft
+    description: >
+      jig confined shall count a job as confined only when a write outside the
+      grants and a read of a denied path both fail with EACCES (EPERM off
+      Linux) on targets the job's own user owns with owner bits that allow
+      the access, after a positive control under a granted directory
+      succeeds; a probe that succeeds shall fail the check,
+      and a refusal the permissions explain, a missing target or another errno
+      shall stop it (could not judge). ZWINGER_PROFILE and ZWINGER_GRANTS shall
+      be reported as labels only. baseline.yml's guard job shall run it on
+      zwinger's decoy paths on a self-hosted runner when JIG_CONFINED is
+      "true", which is set only together with the "confined" label in the
+      guard job's fixed runs-on; the skip shall key on runner.environment
+      (GitHub-hosted), never on a missing label.
+    fields: {priority: must, category: functional}
+    links:
+      - type: satisfies
+        target: SSC-7

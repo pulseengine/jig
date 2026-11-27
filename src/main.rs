@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::json;
 
-use jig::{caller, docs, lockfiles, names, pins, verdict};
+use jig::{caller, confined, docs, lockfiles, names, pins, verdict};
 
 /// Exit codes: 0 check passed, 1 check failed or nothing compared, 2 could not run.
 #[derive(Parser)]
@@ -102,6 +102,18 @@ enum Cmd {
         #[arg(long)]
         allow: Option<PathBuf>,
     },
+    /// Judge runner confinement by what the kernel refuses (see `jig docs confined`).
+    Confined {
+        /// A directory the job may write (positive control), e.g. $RUNNER_TEMP.
+        #[arg(long)]
+        granted: PathBuf,
+        /// A path outside every write grant whose directory Unix permissions let the job write.
+        #[arg(long)]
+        write: PathBuf,
+        /// A path outside every read grant that Unix permissions let the job read.
+        #[arg(long)]
+        read: PathBuf,
+    },
     /// List or print the embedded docs.
     Docs {
         /// Topic to print; omit to list.
@@ -170,6 +182,11 @@ fn main() -> ExitCode {
             patterns,
             allow,
         } => run_names(cli.format, &dir, &patterns, allow.as_deref()),
+        Cmd::Confined {
+            granted,
+            write,
+            read,
+        } => run_confined(cli.format, &granted, &write, &read),
         Cmd::Docs { topic } => run_docs(topic.as_deref()),
     };
     ExitCode::from(code)
@@ -735,4 +752,47 @@ impl Drop for BlobReader {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+fn run_confined(f: Format, granted: &Path, write: &Path, read: &Path) -> u8 {
+    let rep = match confined::check(granted, write, read) {
+        Ok(r) => r,
+        Err(e) => return could_not_run(f, &e),
+    };
+    let code = rep.exit();
+    let verdict = match code {
+        0 => "confined",
+        1 => "not confined",
+        _ => "cannot judge",
+    };
+    // Labels only: any earlier step can set these through GITHUB_ENV.
+    let label = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+    if f == Format::Json {
+        let probe = |p: &confined::Probe| match p {
+            confined::Probe::Denied(d) => json!({"result": "denied", "errno": d}),
+            confined::Probe::Allowed => json!({"result": "allowed"}),
+            confined::Probe::Unjudged(w) => json!({"result": "unjudged", "reason": w}),
+        };
+        println!(
+            "{}",
+            json!({
+                "verdict": verdict,
+                "write": probe(&rep.write),
+                "read": probe(&rep.read),
+                "labels_not_evidence": {
+                    "ZWINGER_PROFILE_set": label("ZWINGER_PROFILE").is_some(),
+                    "ZWINGER_GRANTS_set": label("ZWINGER_GRANTS").is_some(),
+                },
+            })
+        );
+    } else {
+        println!("{}", confined::line("write", &rep.write));
+        println!("{}", confined::line("read", &rep.read));
+        for k in ["ZWINGER_PROFILE", "ZWINGER_GRANTS"] {
+            let v = label(k).map_or("unset".into(), |_| "set".to_string());
+            println!("label {k}: {v} (a label, not evidence)");
+        }
+        println!("confined: {verdict}");
+    }
+    code
 }

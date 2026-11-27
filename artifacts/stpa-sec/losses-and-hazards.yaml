@@ -195,6 +195,33 @@ artifacts:
       - type: prevents-sec-hazard
         target: SH-6
 
+  - id: SH-7
+    type: sec-hazard
+    title: A job meant to run confined runs unconfined, unnoticed
+    status: draft
+    description: >
+      A self-hosted runner without zwinger (or with it not enforcing) takes a
+      job, and nothing in the run says so; a label the job itself can set
+      reads as confined.
+    fields:
+      cia-impact: [integrity, confidentiality]
+      severity: high
+    links:
+      - type: leads-to-sec-loss
+        target: SL-1
+
+  - id: SSC-7
+    type: sec-constraint
+    title: Confinement is shown by kernel refusals the job cannot forge
+    status: draft
+    description: >
+      On a runner labelled confined, the baseline proves confinement by a
+      write and a read the kernel refuses although Unix permissions allow
+      them, and treats environment labels as labels only.
+    links:
+      - type: prevents-sec-hazard
+        target: SH-7
+
   # ---- security UCAs (controllers in artifacts/stpa/control-structure.yaml) ----
   - id: SUCA-1
     type: sec-uca

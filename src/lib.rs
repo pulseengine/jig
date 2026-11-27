@@ -1,6 +1,7 @@
 //! jig: the pulseengine shared CI baseline checks.
 
 pub mod caller;
+pub mod confined;
 pub mod docs;
 pub mod lockfiles;
 pub mod names;

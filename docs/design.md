@@ -135,6 +135,7 @@ nightly and whenever `.github/**`, `ci-controls.toml` or lockfiles change.
 | audit | nested `Cargo.lock` with a known advisory | PR |
 | lockfile freshness | `Cargo.toml` bump without a lock update; `MODULE.bazel` edit without a lock update | PR |
 | private names (`jig names`, baseline / pins) | a synthetic runner name in a tracked file; an empty patterns file; an empty or untracked `names-patterns` input (`names-planted-host`, `names-no-patterns`, `names-input-empty`, `names-input-untracked`, `names-step-planted-host`) | PR |
+| runner confinement (`jig confined`, baseline / guard, inert until `JIG_CONFINED`) | a self-hosted runner that is not confined; the same with forged `ZWINGER_*` labels (`confined-unconfined`, `confined-forged-labels`) | PR |
 | lint | one unformatted file | PR |
 | rivet validate | an artifact with a broken link | PR |
 | build | compile error in a claimed crate | nightly |
