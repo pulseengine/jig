@@ -428,7 +428,10 @@ artifacts:
         grant, so a refusal can only come from the confinement. Controls run
         the step text on a planted self-hosted, unconfined runner (red) and
         with forged labels (red); stand-ins that trust the labels or skip
-        without one report FAIL-OPEN.
+        without one report FAIL-OPEN. The probe binary is always the pinned,
+        sha256-checked release, called by absolute path with LD_PRELOAD and
+        LD_LIBRARY_PATH cleared, never built from the code under test: a build
+        runs dependency build scripts in the job it judges.
       rationale: >
         0 runners carry "confined" today (pulseengine.eu, zwinger,
         2026-11-27), and jig's own CI calls this baseline, so adding the label

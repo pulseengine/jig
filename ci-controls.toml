@@ -335,7 +335,7 @@ shallow_git = true
 [[control]]
 id = "confined-unconfined"
 check = "confined: baseline / guard"
-run = 'r=$(cat ci-controls/fixtures/confined-runner); if [ "$r" = github-hosted ]; then echo "confined: not applicable (hosted fork runner)"; exit 0; fi; RUNNER_TEMP=$(mktemp -d) CONFINED_WRITE=$PWD/zz-confined-probe/write-target CONFINED_READ=$PWD/zz-confined-probe/secret bash ci-controls/confined.sh'
+run = 'r=$(cat ci-controls/fixtures/confined-runner); if [ "$r" = github-hosted ]; then echo "confined: not applicable (hosted fork runner)"; exit 0; fi; JIG_PROBE=$JIG RUNNER_TEMP=$(mktemp -d) CONFINED_WRITE=$PWD/zz-confined-probe/write-target CONFINED_READ=$PWD/zz-confined-probe/secret bash ci-controls/confined.sh'
 plant = "ci-controls/confined-unconfined"
 stderr_or_stdout_matches = 'confined: not confined'
 
@@ -345,6 +345,6 @@ stderr_or_stdout_matches = 'confined: not confined'
 [[control]]
 id = "confined-forged-labels"
 check = "confined: baseline / guard (labels are not evidence)"
-run = 'r=$(cat ci-controls/fixtures/confined-runner); if [ "$r" = github-hosted ]; then echo "confined: not applicable (hosted fork runner)"; exit 0; fi; RUNNER_TEMP=$(mktemp -d) CONFINED_WRITE=$PWD/zz-confined-probe/write-target CONFINED_READ=$PWD/zz-confined-probe/secret ZWINGER_PROFILE=github-runner ZWINGER_GRANTS=/tmp bash ci-controls/confined.sh'
+run = 'r=$(cat ci-controls/fixtures/confined-runner); if [ "$r" = github-hosted ]; then echo "confined: not applicable (hosted fork runner)"; exit 0; fi; JIG_PROBE=$JIG RUNNER_TEMP=$(mktemp -d) CONFINED_WRITE=$PWD/zz-confined-probe/write-target CONFINED_READ=$PWD/zz-confined-probe/secret ZWINGER_PROFILE=github-runner ZWINGER_GRANTS=/tmp bash ci-controls/confined.sh'
 plant = "ci-controls/confined-unconfined"
 stderr_or_stdout_matches = 'confined: not confined'

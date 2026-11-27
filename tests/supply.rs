@@ -86,12 +86,31 @@ fn confined_probe_step_matches_control_script() {
         step_body(&wf, "confined probe"),
         script_body("ci-controls/confined.sh")
     );
-    // The guard job's jig install is the pins job's, so a pinned release and
-    // jig-from-source behave the same in both.
-    assert_eq!(
-        step_body(&wf, "install jig for the confined probe"),
-        step_body(&wf, "install jig")
-    );
+    // The probe binary is always the pinned release, checked by sha256, never
+    // built from the code under test in the job it judges.
+    let fetch = step_body(&wf, "fetch pinned jig for the confined probe");
+    assert!(!fetch.contains("cargo"), "{fetch}");
+    assert!(!fetch.contains("FROM_SOURCE"), "{fetch}");
+    assert!(fetch.contains("sha256sum -c -"), "{fetch}");
+    assert!(!fetch.contains("GITHUB_PATH"), "{fetch}");
+    // Called by absolute path with the dynamic loader variables cleared.
+    let lines: Vec<&str> = wf.lines().collect();
+    let probe = lines
+        .iter()
+        .position(|l| l.trim() == "- name: confined probe")
+        .unwrap();
+    let keys: Vec<&str> = lines[probe + 1..]
+        .iter()
+        .take_while(|l| l.trim() != "run: |")
+        .map(|l| l.trim())
+        .collect();
+    for want in [
+        "JIG_PROBE: ${{ runner.temp }}/jig-probe/jig",
+        "LD_PRELOAD: \"\"",
+        "LD_LIBRARY_PATH: \"\"",
+    ] {
+        assert!(keys.contains(&want), "missing {want}: {keys:?}");
+    }
 }
 
 /// The probe and the label move together: "confined" in the guard job's
