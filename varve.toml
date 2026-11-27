@@ -1,13 +1,17 @@
 # jig pins the tools its own development loop uses (rivet; plant, sieve and
-# jig itself ride in the same layer). Realm pulseengine is the smallest realm
-# that covers them (owner, 2026-11-21); the layer is pinned by name and digest.
+# jig itself ride in the same layer; kiln, meld and the wasm tools for running
+# jig as a component). Realm covalent composes pulseengine and
+# pulseengine-wasm into one pin (owner, 2026-11-27; before that realm
+# pulseengine, owner 2026-11-21); the layer is pinned by name and digest.
 #
-# 2026.11.32 is the first pulseengine layer with jig v0.1.0 and plant v0.4.0,
-# listed newest in the line 2026.11 index (pulseengine-layers#79) on 2026-11-21.
+# 2026.11.28 composes pulseengine 2026.11.45 (jig 0.1.7, plant 0.5.1,
+# sieve 0.4.5) with kiln 0.9.0 and meld 0.70.0. Some pulseengine-wasm
+# payloads carry no proof of origin; `varve inspect` shows each as
+# proof = unverified, with the recorded reason.
 manifest-version = 1
 
 [toolchain]
-realm   = "pulseengine"
+realm   = "covalent"
 channel = "rolling"
-layer   = "2026.11.32"
-digest  = "sha256:ccda895f08dd03949e973a74b9526a9a01aa2e281a7df762b7fd52c403068cd5"
+layer   = "2026.11.28"
+digest  = "sha256:da7f6b48f875349c020e46ba52958f022db4c03b90b70bf91c718ccbbebbbbce"
