@@ -13,6 +13,10 @@ are described in their GitHub release notes.
 - wasm32-wasip2: exit code 2 (cannot judge) now reaches the host as 2, not
   1. On WASI, jig flushes stdout and stderr and calls
   `std::process::exit`, which needs Rust 1.100's exit-with-code import.
+- `jig docs caller`: a caller must require `required / verdict` and
+  `baseline / guard`, or it merges past a red verdict (warte#227); two
+  `gh api` commands check it from a maintainer shell. design.md adds the
+  same line to the adoption checklist (owner, 2026-11-27).
 
 ## v0.1.8 (2026-11-27)
 
