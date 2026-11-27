@@ -480,3 +480,19 @@ artifacts:
     links:
       - type: refines
         target: REQ-008
+
+  - id: REQ-029
+    type: requirement
+    title: jig fused by meld runs under kiln with native jig's verdicts (advisory)
+    status: draft
+    description: >
+      jig's CI shall fuse the wasm32-wasip2 build with a pinned,
+      sha256-checked meld using --reproducible, fuse it twice and require
+      byte-identical output and import map, and run the fused module under a
+      pinned, sha256-checked kiln on REQ-028's inputs with the same
+      comparison against native jig. The job is advisory (continue-on-error,
+      listed in the verdict's advisory) until the owner makes it gating.
+    fields: {priority: could, category: functional}
+    links:
+      - type: refines
+        target: REQ-028
