@@ -26,6 +26,9 @@ are described in their GitHub release notes.
   Parked behind `KILN_PARKED: "true"`: kiln 0.9.0 hung on its first call on
   the x86_64 Linux runner (merge-group run 46029354661), as for sieve; it
   comes back with the kiln release that ships kiln#737.
+  Unparked in component mode (`kiln --wasi --component --dir .`, no import
+  map), the mode in which ordeal#354 ran on kiln 0.9.0 on x86_64 Linux
+  without a hang (kiln#748).
 
 ## v0.1.8 (2026-11-27)
 

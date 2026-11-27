@@ -488,8 +488,8 @@ artifacts:
     description: >
       jig's CI shall fuse the wasm32-wasip2 build with a pinned,
       sha256-checked meld using --reproducible, fuse it twice and require
-      byte-identical output and import map, and run the fused module under a
-      pinned, sha256-checked kiln on REQ-028's inputs with the same
+      byte-identical output, and run the fused module in component mode under
+      a pinned, sha256-checked kiln on REQ-028's inputs with the same
       comparison against native jig. The job is advisory (continue-on-error,
       listed in the verdict's advisory) until the owner makes it gating.
     fields: {priority: could, category: functional}
