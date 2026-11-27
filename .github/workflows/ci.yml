@@ -50,12 +50,12 @@ env:
   MELD_SHA256: 9ff3e50d538a54fd129a8962733b766569218eb9dbb8b9be642b389b6063895c
   KILN_VERSION: v0.9.0
   KILN_SHA256: 768a1f5971656635d24b614d48fb50337e810da0e8c8006f8e863d40bc550ec2
-  # "true" parks the kiln job (every step skips). Parked 2026-11-27 after kiln
-  # 0.9.0 hung on the first call on the x86_64 Linux runner in import-map mode
-  # (merge-group run 46029354661, kiln#748). Unparked in component mode
-  # (--component, no import map), the mode in which ordeal#354 ran 26 calls
-  # on kiln 0.9.0 on x86_64 Linux without a hang.
-  KILN_PARKED: "false"
+  # "true" parks the kiln job (every step skips). kiln 0.9.0 hung on the first
+  # call on the x86_64 Linux runner in import-map mode (merge-group run
+  # 46029354661) and in component mode (jig#40, run job 140648267077), each
+  # stopped at 120 s (kiln#748, the kiln#737 startup cost). Set "false" with
+  # the KILN_VERSION and KILN_SHA256 of kiln v0.9.1, which ships #737.
+  KILN_PARKED: "true"
 
 jobs:
   rivet:

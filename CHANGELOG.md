@@ -29,6 +29,8 @@ are described in their GitHub release notes.
   Unparked in component mode (`kiln --wasi --component --dir .`, no import
   map), the mode in which ordeal#354 ran on kiln 0.9.0 on x86_64 Linux
   without a hang (kiln#748).
+  It hung in component mode too (jig#40) and is parked again until kiln
+  v0.9.1 ships #737.
 
 ## v0.1.8 (2026-11-27)
 
