@@ -462,3 +462,21 @@ artifacts:
     links:
       - type: satisfies
         target: SSC-7
+
+  - id: REQ-028
+    type: requirement
+    title: jig's wasm32-wasip2 build gives native jig's verdicts under wasmtime
+    status: draft
+    description: >
+      jig's CI shall build jig for wasm32-wasip2 and run it under a pinned,
+      sha256-checked wasmtime for jig pins on the repository, jig verdict
+      --self-test, jig verdict on missing inputs (exit 2), and jig pins on a
+      planted workflow with a tag ref; each
+      run's output and exit code shall equal native jig's, and the planted
+      input shall be red in both. A difference fails CI. jig confined is
+      native only (it tests kernel refusals); jig lockfiles and jig names
+      spawn cargo and git and are not run as wasm yet.
+    fields: {priority: should, category: functional}
+    links:
+      - type: refines
+        target: REQ-008

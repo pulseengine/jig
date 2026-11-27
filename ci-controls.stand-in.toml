@@ -258,3 +258,13 @@ check = "confined: skipped when ZWINGER_PROFILE is unset"
 run = 'r=$(cat ci-controls/fixtures/confined-runner); if [ "$r" = github-hosted ]; then echo "confined: not applicable (hosted fork runner)"; exit 0; fi; [ -n "$ZWINGER_PROFILE" ] || { echo "confined: not applicable"; exit 0; }; JIG_PROBE=$JIG RUNNER_TEMP=$(mktemp -d) CONFINED_WRITE=$PWD/zz-confined-probe/write-target CONFINED_READ=$PWD/zz-confined-probe/secret bash ci-controls/confined.sh'
 plant = "ci-controls/confined-unconfined"
 stderr_or_stdout_matches = '.'
+
+# rivet: verifies REQ-028
+# A comparison of exit codes only: a runner that changes the output but not
+# the exit code passes it (FAIL-OPEN).
+[[control]]
+id = "stand-in-wasm-native-exit-only"
+check = "wasm: only exit codes compared"
+run = 'W=$PWD/ci-controls/fixtures/wasmtime-shim; w=$(cd "$(dirname "$W")" && pwd)/wasmtime-shim; for a in "pins ." "verdict --self-test"; do $JIG $a > /dev/null 2>&1; n=$?; $W run --dir=. "$w" $a > /dev/null 2>&1; m=$?; [ "$n" = "$m" ] || exit 1; done; echo "exit codes match"'
+plant = "ci-controls/wasm-native-differs"
+stderr_or_stdout_matches = '.'

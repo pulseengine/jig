@@ -4,6 +4,16 @@ jig is below 1.0 (REQ-020). Callers pin the record commit that follows each
 signed tag, never the tag commit (docs/releasing.md). Releases before v0.1.6
 are described in their GitHub release notes.
 
+## Unreleased
+
+- CI runs jig's wasm32-wasip2 build under wasmtime 51.0.0 and compares
+  stdout, stderr and exit code with the native binary on four inputs,
+  one of them a planted unpinned `uses:` (REQ-028). The plant control
+  `wasm-native-differs` shows the comparison goes red on one changed line.
+- wasm32-wasip2: exit code 2 (cannot judge) now reaches the host as 2, not
+  1. On WASI, jig flushes stdout and stderr and calls
+  `std::process::exit`, which needs Rust 1.100's exit-with-code import.
+
 ## v0.1.8 (2026-11-27)
 
 - `jig confined`: judges runner confinement by what the kernel refuses (a
