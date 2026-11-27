@@ -50,12 +50,12 @@ env:
   MELD_SHA256: 9ff3e50d538a54fd129a8962733b766569218eb9dbb8b9be642b389b6063895c
   KILN_VERSION: v0.9.0
   KILN_SHA256: 768a1f5971656635d24b614d48fb50337e810da0e8c8006f8e863d40bc550ec2
-  # The kiln job is parked (2026-11-27): kiln 0.9.0 hung on the first call on
-  # the x86_64 Linux runner (merge-group run 46029354661: "kiln hung
-  # (kiln#748): no result after 120 s"), as it did for sieve. kiln#748 is
-  # kiln#737, fixed on kiln main; set "false" together with the KILN_VERSION
-  # and KILN_SHA256 of the kiln release that ships it.
-  KILN_PARKED: "true"
+  # "true" parks the kiln job (every step skips). Parked 2026-11-27 after kiln
+  # 0.9.0 hung on the first call on the x86_64 Linux runner in import-map mode
+  # (merge-group run 46029354661, kiln#748). Unparked in component mode
+  # (--component, no import map), the mode in which ordeal#354 ran 26 calls
+  # on kiln 0.9.0 on x86_64 Linux without a hang.
+  KILN_PARKED: "false"
 
 jobs:
   rivet:
@@ -236,6 +236,7 @@ jobs:
     name: jig fused by meld under kiln
     # Parked while KILN_PARKED is "true" (see env): every step below skips and
     # the job passes in seconds; the verdict lists it as advisory either way.
+    # kiln runs the fused module in component mode (ci-controls/kiln-run).
     continue-on-error: true
     # Fork PRs never reach self-hosted runners (fail-closed same-repo guard).
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","light"]') || 'ubuntu-24.04' }}
@@ -277,13 +278,12 @@ jobs:
           cargo build --locked --release
           cargo build --locked --release --target wasm32-wasip2
           t="$CARGO_TARGET_DIR"
-          "$c/meld" fuse --reproducible --memory multi --emit-import-map "$c/jig.map.json" -o "$c/jig.fused.wasm" "$t/wasm32-wasip2/release/jig.wasm"
-          "$c/meld" fuse --reproducible --memory multi --emit-import-map "$c/again.map.json" -o "$c/again.fused.wasm" "$t/wasm32-wasip2/release/jig.wasm"
+          "$c/meld" fuse --reproducible --memory multi -o "$c/jig.fused.wasm" "$t/wasm32-wasip2/release/jig.wasm"
+          "$c/meld" fuse --reproducible --memory multi -o "$c/again.fused.wasm" "$t/wasm32-wasip2/release/jig.wasm"
           cmp "$c/jig.fused.wasm" "$c/again.fused.wasm"
-          cmp "$c/jig.map.json" "$c/again.map.json"
           sha256sum "$c/jig.fused.wasm"
           JIG="$t/release/jig" JIG_WASM="$c/jig.fused.wasm" WASMTIME="$PWD/ci-controls/kiln-run" \
-            KILN="$c/kiln" KILN_IMPORT_MAP="$c/jig.map.json" WASM_RUNNER=kiln \
+            KILN="$c/kiln" WASM_RUNNER=kiln \
             bash ci-controls/wasm-native.sh
 
   required:

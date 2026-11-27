@@ -3,7 +3,8 @@
 # Runs a meld-fused jig under kiln with wasmtime's calling shape, so
 # wasm-native.sh compares kiln against native jig unchanged:
 #   kiln-run run --dir=. <fused.wasm> args...
-# $KILN is the kiln binary, $KILN_IMPORT_MAP the meld --emit-import-map JSON.
+# $KILN is the kiln binary. kiln runs the fused module in component mode
+# (--component): import-map mode hung on x86_64 Linux (kiln#748).
 # Any fault here (dropped args, no output, wrong exit) differs from native and
 # turns the comparison red; wasm-native-differs proves the comparison can.
 # kiln 0.9.0 hangs on some x86_64 Linux runners (kiln#748); one call takes
@@ -14,7 +15,7 @@ shift 2
 wasm=$1
 shift
 t=${KILN_TIMEOUT:-120}
-timeout "$t" "$KILN" --wasi --wasi-fs . --import-map "$KILN_IMPORT_MAP" "$wasm" "$@"
+timeout "$t" "$KILN" --wasi --component --dir . "$wasm" "$@"
 rc=$?
 if [ "$rc" = 124 ]; then
   echo "kiln hung (kiln#748): no result after $t s" >&2
