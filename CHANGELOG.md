@@ -6,6 +6,25 @@ are described in their GitHub release notes.
 
 ## Unreleased
 
+- `jig cli-help -- <BIN>`: judges a binary's `-h` and `--help`, every
+  subcommand's, and an unknown flag against the fleet help rules CH1 to CH7
+  (width at terminal widths 60, 80 and 120 under a pty and with COLUMNS,
+  capped at 100; descriptions kept right of the names; 60-character command
+  descriptions; 8 commands per heading; no requirement ids, issue refs or
+  versions; exit codes; a short `-h` and an `Examples:` section). The
+  thresholds are org defaults in jig (`org/cli-help.toml`) with a
+  numbers-only repo override in `.github/jig-cli-help.toml`; no allow file
+  (REQ-031, `jig docs cli-help`, owner 2026-11-28). Ten planted controls,
+  one per rule plus a fixture with an over-long line and 9 ungrouped
+  commands that must report both. Callers opt in through the composite
+  action (`command: cli-help`); varve is the pilot.
+- **CLI change:** clap's generated `help` subcommand is gone, so `jig help`
+  and `jig help <command>` now exit 2; use `jig --help` and
+  `jig <command> --help`. No pulseengine repository runs `jig help` (GitHub
+  code search, 2026-11-28).
+- jig's own help passes cli-help: command descriptions are short (the docs
+  pointer moved to the long help), lines wrap to the terminal up to 100
+  columns, and the top-level `--help` has examples.
 - CI: the advisory kiln job runs again on kiln v0.9.1, which ships kiln#737
   and ends the hang on x86_64 Linux (kiln#748). Still advisory and still
   component mode; no required check changes.

@@ -11,10 +11,10 @@
 # from this action's own checkout (github.action_path), which is the commit
 # the caller pinned. The caller needs a Rust toolchain on PATH for that.
 name: jig
-description: pulseengine shared CI baseline checks (pins, verdict, caller)
+description: pulseengine shared CI baseline checks (pins, verdict, caller, cli-help)
 inputs:
   command:
-    description: "jig subcommand: pins, verdict or caller"
+    description: "jig subcommand: pins, verdict, caller or cli-help"
     required: true
   args:
     description: "Arguments after the subcommand, split on whitespace (from your reviewed workflow, never PR text)"
@@ -55,7 +55,7 @@ runs:
         ARGS: ${{ inputs.args }}
       run: |
         set -euo pipefail
-        case "$COMMAND" in pins|verdict|caller) ;; *) echo "unknown jig command '$COMMAND'"; exit 2 ;; esac
+        case "$COMMAND" in pins|verdict|caller|cli-help) ;; *) echo "unknown jig command '$COMMAND'"; exit 2 ;; esac
         read -r -a argv <<< "$ARGS"
         jig --version
         jig "$COMMAND" "${argv[@]}"

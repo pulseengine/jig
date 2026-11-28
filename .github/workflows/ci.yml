@@ -133,6 +133,7 @@ jobs:
         run: |
           "$JIG" verdict --self-test
           "$JIG" pins .
+          "$JIG" cli-help -- "$JIG"
       # Run what we build (REQ-028): the wasm32-wasip2 jig under the pinned
       # wasmtime must give native jig's output and exit code for pins, the verdict
       # self-test and a could-not-run verdict (exit 2), and turn red on a

@@ -360,3 +360,82 @@ check = "wasm: jig under wasmtime matches native (ci.yml / test)"
 run = 'WASMTIME=$PWD/ci-controls/fixtures/wasmtime-shim JIG_WASM=ci-controls/fixtures/wasmtime-shim bash ci-controls/wasm-native.sh'
 plant = "ci-controls/wasm-native-differs"
 stderr_or_stdout_matches = 'wasm differs from native'
+
+# rivet: verifies REQ-031
+# jig cli-help on a fixture CLI (ci-controls/fixtures/cli-help/cli.sh, green
+# unplanted). Each plant replaces the fixture with a copy that breaks one
+# rule; the check must go red naming that rule.
+
+[[control]]
+id = "cli-help-long-line"
+check = "cli-help: jig cli-help"
+run = '"$JIG" cli-help -- sh ci-controls/fixtures/cli-help/cli.sh'
+plant = "ci-controls/cli-help-long-line"
+stderr_or_stdout_matches = 'CH1 width .* -h line 11: 108 columns, over the 100'
+
+[[control]]
+id = "cli-help-ignores-width"
+check = "cli-help: jig cli-help"
+run = '"$JIG" cli-help -- sh ci-controls/fixtures/cli-help/cli.sh'
+plant = "ci-controls/cli-help-ignores-width"
+stderr_or_stdout_matches = 'CH1 width .* -h line 11: 73 columns, over the 60 .*tty 60'
+
+[[control]]
+id = "cli-help-wraps-under-names"
+check = "cli-help: jig cli-help"
+run = '"$JIG" cli-help -- sh ci-controls/fixtures/cli-help/cli.sh'
+plant = "ci-controls/cli-help-wraps-under-names"
+stderr_or_stdout_matches = 'CH1b separable .* line 7: text at column 3 sits in the name column'
+
+[[control]]
+id = "cli-help-ungrouped"
+check = "cli-help: jig cli-help"
+run = '"$JIG" cli-help -- sh ci-controls/fixtures/cli-help/cli.sh'
+plant = "ci-controls/cli-help-ungrouped"
+stderr_or_stdout_matches = 'CH3 ungrouped .* 9 commands under .Commands:.'
+
+[[control]]
+id = "cli-help-long-desc"
+check = "cli-help: jig cli-help"
+run = '"$JIG" cli-help -- sh ci-controls/fixtures/cli-help/cli.sh'
+plant = "ci-controls/cli-help-long-desc"
+stderr_or_stdout_matches = 'CH2 desc .* .check. description is 67 characters'
+
+[[control]]
+id = "cli-help-req-id"
+check = "cli-help: jig cli-help"
+run = '"$JIG" cli-help -- sh ci-controls/fixtures/cli-help/cli.sh'
+plant = "ci-controls/cli-help-req-id"
+stderr_or_stdout_matches = 'CH4 refs .* line 7: a requirement id'
+
+[[control]]
+id = "cli-help-help-exit-1"
+check = "cli-help: jig cli-help"
+run = '"$JIG" cli-help -- sh ci-controls/fixtures/cli-help/cli.sh'
+plant = "ci-controls/cli-help-help-exit-1"
+stderr_or_stdout_matches = 'CH5 exit .* --help: exited 1'
+
+[[control]]
+id = "cli-help-unknown-exit-1"
+check = "cli-help: jig cli-help"
+run = '"$JIG" cli-help -- sh ci-controls/fixtures/cli-help/cli.sh'
+plant = "ci-controls/cli-help-unknown-exit-1"
+stderr_or_stdout_matches = 'CH6 unknown .*: an unknown flag exited 1, not 2'
+
+[[control]]
+id = "cli-help-no-examples"
+check = "cli-help: jig cli-help"
+run = '"$JIG" cli-help -- sh ci-controls/fixtures/cli-help/cli.sh'
+plant = "ci-controls/cli-help-no-examples"
+stderr_or_stdout_matches = 'CH7 short-long .* has no .Examples:. section'
+
+# rivet: verifies REQ-031
+# The owner's named control: one fixture with an over-long line and 9 ungrouped
+# commands must fail and report both rules (the run exits 0, read as not red,
+# unless CH3 is reported too).
+[[control]]
+id = "cli-help-long-line-ungrouped"
+check = "cli-help: jig cli-help"
+run = 'out=$("$JIG" cli-help -- sh ci-controls/fixtures/cli-help/cli.sh); rc=$?; printf "%s\n" "$out"; case "$out" in *"CH3 ungrouped"*) exit $rc;; esac; echo "CH3 not reported"; exit 0'
+plant = "ci-controls/cli-help-long-line-ungrouped"
+stderr_or_stdout_matches = 'CH1 width .* over the 100'

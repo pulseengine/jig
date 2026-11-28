@@ -290,7 +290,56 @@ probe succeeded), 2 could not judge (positive control failed, a target is
 missing, the permissions already refuse it, or another errno).
 ";
 
-pub const TOPICS: [(&str, &str, &str); 6] = [
+const CLI_HELP: &str = "\
+jig cli-help: a binary's -h and --help follow the fleet help rules (REQ-031)
+
+  jig cli-help [--config FILE] [--format text|json] -- BIN [ARGS...]
+
+BIN is the repository's own built binary (ARGS: leading arguments, e.g. a
+multi-call name). jig runs BIN -h and BIN --help, then each subcommand's -h
+and --help (clap's `help` subcommand skipped) down to `depth` levels, and
+BIN [sub] --jig-cli-help-unknown-flag. Every -h and --help runs seven times:
+without a terminal with COLUMNS=60, 80 and 120; under a pseudo-terminal of
+60, 80 and 120 columns (COLUMNS unset); and without a terminal, COLUMNS
+unset. Exit 0 no finding, 1 findings, 2 could not judge (BIN does not start,
+a call takes over 10 s, or a bad config). Unix only.
+
+One line per finding, with the modes it was seen in:
+  CH1  width       a line wider than the run allows: min(width, 100), and
+                   100 without a terminal. Help must follow the terminal: a
+                   tool that always wraps at 80 is red at 60.
+  CH1b separable   in a list, a description or its continuation starts in
+                   the name column (wrapped under the names). A description
+                   on its own line must sit 4 or more columns deeper.
+  CH2  desc        a command description over 60 characters.
+  CH3  ungrouped   over 8 commands under one heading.
+  CH4  refs        a requirement id (REQ-, DD-, SR-, VER-), an issue ref (#12)
+                   or a version (v1.2, 1.2.3) in help text; the Usage line,
+                   Examples and clap's [default: ...] brackets are skipped.
+  CH5  exit        -h or --help exits non-zero or prints nothing.
+  CH6  unknown     an unknown flag does not exit 2.
+  CH7  short-long  -h longer than --help, or the top-level --help has no
+                   'Examples:' section.
+
+For clap: enable the `wrap_help` feature and set max_term_width = 100; put
+the short text in `about` and the long text and examples in `long_about` /
+`after_long_help`. clap 4 lists subcommands under one heading, so over 8
+commands needs a hand-written grouped list in `help_template`.
+
+Thresholds: the org defaults are built into jig (width_cap 100, widths
+[60, 80, 120], desc_max 60, per_heading_max 8, depth 3). A repository may
+change the numbers in .github/jig-cli-help.toml (read when present, or
+--config FILE); each run prints every changed value. No rule can be turned
+off and no finding exempted; an unknown key is exit 2.
+
+In CI, after the release build (opt-in; baseline.yml cannot see the binary):
+  - uses: pulseengine/jig@<record SHA>
+    with:
+      command: cli-help
+      args: -- target/release/<tool>
+";
+
+pub const TOPICS: [(&str, &str, &str); 7] = [
     (
         "verdict",
         "the required / verdict decision and its self-test",
@@ -308,6 +357,11 @@ pub const TOPICS: [(&str, &str, &str); 6] = [
         "confined",
         "runner confinement judged by kernel refusals",
         CONFINED,
+    ),
+    (
+        "cli-help",
+        "a binary's help follows the fleet rules",
+        CLI_HELP,
     ),
 ];
 
