@@ -517,3 +517,30 @@ artifacts:
     links:
       - type: refines
         target: REQ-028
+
+  - id: REQ-031
+    type: requirement
+    title: jig cli-help judges a binary's -h and --help against the fleet help rules
+    status: draft
+    description: >
+      jig cli-help shall run a binary's -h and --help, each subcommand's -h
+      and --help to a configured depth, and an unknown flag, and fail on:
+      a line wider than the run allows (min of the terminal width and 100,
+      run without a terminal at COLUMNS 60, 80 and 120, under a
+      pseudo-terminal of those widths, and without a terminal at the
+      default); a list description or continuation that starts in the name
+      column; a command description over 60 characters; more than 8
+      commands under one heading; a requirement id, issue reference or
+      version in help text; -h or --help exiting non-zero or printing
+      nothing; an unknown flag not exiting 2; -h longer than --help; a
+      top-level --help without an Examples section (owner, 2026-11-28; the
+      plugin's cli-conventions rules 7 and 7b). The thresholds are org
+      defaults built into jig, which a repository may change in
+      .github/jig-cli-help.toml, each change printed in every run; no rule
+      can be turned off and no finding exempted. A binary that does not
+      start, a call over 10 s or a bad config is exit 2. jig runs it on its
+      own binary in CI; callers opt in through the composite action.
+    fields: {priority: should, category: functional}
+    links:
+      - type: refines
+        target: REQ-004

@@ -1,0 +1,15 @@
+# Org-wide thresholds for `jig cli-help` (jig docs cli-help). Every repo gets
+# these through its pinned jig; they change only by a reviewed jig release.
+# A repo may override the numbers in .github/jig-cli-help.toml; no rule can be
+# switched off and no finding exempted.
+
+# Widest help line at any terminal width.
+width_cap = 100
+# Terminal widths each help output is run at (also under a pty).
+widths = [60, 80, 120]
+# Longest command description in a command list.
+desc_max = 60
+# Most commands under one heading before they must be grouped.
+per_heading_max = 8
+# Subcommand levels checked.
+depth = 3

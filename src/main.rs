@@ -7,9 +7,24 @@ use serde_json::json;
 
 use jig::{caller, confined, docs, lockfiles, names, pins, verdict};
 
+const EXAMPLES: &str = "\
+Examples:
+  jig pins .
+  jig verdict --self-test
+  jig names --patterns .github/private-name-shapes.txt
+  jig cli-help -- target/release/jig
+  jig docs pins";
+
 /// Exit codes: 0 check passed, 1 check failed or nothing compared, 2 could not run.
 #[derive(Parser)]
-#[command(name = "jig", version, about = "pulseengine shared CI baseline checks")]
+#[command(
+    name = "jig",
+    version,
+    about = "pulseengine shared CI baseline checks",
+    max_term_width = 100,
+    disable_help_subcommand = true,
+    after_long_help = EXAMPLES
+)]
 struct Cli {
     /// Output format.
     #[arg(long, value_enum, default_value = "text", global = true)]
@@ -26,7 +41,9 @@ enum Format {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Judge the caller's `needs` (see `jig docs verdict`).
+    /// Judge the caller's `needs`.
+    ///
+    /// See `jig docs verdict`.
     Verdict {
         /// JSON of `${{ toJSON(needs) }}`.
         #[arg(long)]
@@ -60,13 +77,17 @@ enum Cmd {
         #[arg(long)]
         self_test: bool,
     },
-    /// Check that every action and toolchain is pinned (see `jig docs pins`).
+    /// Check that every action and toolchain is pinned.
+    ///
+    /// See `jig docs pins`.
     Pins {
         /// Directory to scan.
         #[arg(default_value = ".")]
         dir: PathBuf,
     },
-    /// Check a caller workflow's shape (see `jig docs caller`).
+    /// Check a caller workflow's shape.
+    ///
+    /// See `jig docs caller`.
     Caller {
         /// The caller workflow file.
         #[arg(long)]
@@ -81,7 +102,9 @@ enum Cmd {
         #[arg(long)]
         allow_local: bool,
     },
-    /// Check that every Cargo workspace has a committed lock (see `jig docs lockfiles`).
+    /// Check that every Cargo workspace has a committed lock.
+    ///
+    /// See `jig docs lockfiles`.
     Lockfiles {
         /// Repository root (a git work tree).
         #[arg(default_value = ".")]
@@ -90,7 +113,9 @@ enum Cmd {
         #[arg(long)]
         census: Option<PathBuf>,
     },
-    /// Check that no tracked file contains a private name (see `jig docs names`).
+    /// Check that no tracked file contains a private name.
+    ///
+    /// See `jig docs names`.
     Names {
         /// Repository root (a git work tree).
         #[arg(default_value = ".")]
@@ -102,7 +127,12 @@ enum Cmd {
         #[arg(long)]
         allow: Option<PathBuf>,
     },
-    /// Judge runner confinement by what the kernel refuses (see `jig docs confined`).
+    /// Judge runner confinement by what the kernel refuses.
+    ///
+    /// See `jig docs confined`.
+    #[command(
+        override_usage = "jig confined --granted <GRANTED>\n       --write <WRITE> --read <READ>"
+    )]
     Confined {
         /// A directory the job may write (positive control), e.g. $RUNNER_TEMP.
         #[arg(long)]
@@ -113,6 +143,17 @@ enum Cmd {
         /// A path outside every read grant that Unix permissions let the job read.
         #[arg(long)]
         read: PathBuf,
+    },
+    /// Check a binary's -h and --help output.
+    ///
+    /// See `jig docs cli-help`.
+    CliHelp {
+        /// Repo override of the org thresholds [default: .github/jig-cli-help.toml if present].
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// The binary and its leading arguments, after `--`.
+        #[arg(last = true, required = true, value_name = "BIN")]
+        target: Vec<String>,
     },
     /// List or print the embedded docs.
     Docs {
@@ -187,6 +228,7 @@ fn main() -> ExitCode {
             write,
             read,
         } => run_confined(cli.format, &granted, &write, &read),
+        Cmd::CliHelp { config, target } => run_cli_help(cli.format, config.as_deref(), &target),
         Cmd::Docs { topic } => run_docs(topic.as_deref()),
     };
     exit(code)
@@ -813,6 +855,135 @@ fn run_confined(f: Format, granted: &Path, write: &Path, read: &Path) -> u8 {
             println!("label {k}: {v} (a label, not evidence)");
         }
         println!("confined: {verdict}");
+    }
+    code
+}
+
+#[cfg(not(unix))]
+fn run_cli_help(f: Format, _config: Option<&Path>, _target: &[String]) -> u8 {
+    could_not_run(f, "jig cli-help spawns the binary and needs a unix host")
+}
+
+/// `jig cli-help -- <BIN> [ARGS...]`: run every help output of the binary in
+/// every mode and judge it (REQ-031, `jig docs cli-help`).
+#[cfg(unix)]
+fn run_cli_help(f: Format, config: Option<&Path>, target: &[String]) -> u8 {
+    use jig::clihelp;
+    use clihelp::run::{Target, UNKNOWN};
+    use clihelp::{Config, Mode};
+    use std::collections::BTreeSet;
+
+    let org = match Config::org() {
+        Ok(c) => c,
+        Err(e) => return could_not_run(f, &e),
+    };
+    let default = Path::new(".github/jig-cli-help.toml");
+    let path = config.or_else(|| default.is_file().then_some(default));
+    let (cfg, changed) = match path {
+        None => (org, Vec::new()),
+        Some(p) => match read(p).and_then(|t| org.with_override(&t)) {
+            Ok(x) => x,
+            Err(e) => return could_not_run(f, &e),
+        },
+    };
+    let Some((program, args)) = target.split_first() else {
+        return could_not_run(f, "no binary given after --");
+    };
+    let t = Target {
+        program: program.clone(),
+        args: args.to_vec(),
+    };
+    let base = t.display();
+    let modes = Mode::all(&cfg.widths);
+    let mut findings: Vec<clihelp::Finding> = Vec::new();
+    let mut runs = 0usize;
+    let mut commands = 0usize;
+    let mut queue: Vec<(Vec<String>, usize)> = vec![(Vec::new(), 1)];
+    let mut seen = BTreeSet::new();
+    while let Some((path, depth)) = queue.pop() {
+        if !seen.insert(path.clone()) {
+            continue;
+        }
+        commands += 1;
+        let name = if path.is_empty() {
+            base.clone()
+        } else {
+            format!("{base} {}", path.join(" "))
+        };
+        let mut plain = Vec::new();
+        for flag in ["-h", "--help"] {
+            let mut extra = path.clone();
+            extra.push(flag.to_string());
+            for mode in &modes {
+                runs += 1;
+                let out = match t.call(&extra, *mode) {
+                    Ok(o) => o,
+                    Err(e) => return could_not_run(f, &e),
+                };
+                let content = *mode == Mode::Plain;
+                findings.extend(clihelp::judge(&cfg, &name, flag, *mode, &out, content));
+                if content {
+                    plain.push(out);
+                }
+            }
+        }
+        findings.extend(clihelp::judge_pair(
+            &name,
+            path.is_empty(),
+            &plain[0],
+            &plain[1],
+        ));
+        let mut extra = path.clone();
+        extra.push(UNKNOWN.to_string());
+        runs += 1;
+        match t.call(&extra, Mode::Plain) {
+            Ok(o) => findings.extend(clihelp::judge_unknown(&name, UNKNOWN, o.code)),
+            Err(e) => return could_not_run(f, &e),
+        }
+        if depth < cfg.depth && plain[1].code == Some(0) {
+            for sub in clihelp::subcommands(&plain[1].stdout).into_iter().rev() {
+                let mut p = path.clone();
+                p.push(sub);
+                queue.push((p, depth + 1));
+            }
+        }
+    }
+    let grouped = clihelp::group(findings);
+    let code = if grouped.is_empty() { PASS } else { FAIL };
+    if f == Format::Json {
+        println!(
+            "{}",
+            json!({
+                "verdict": if code == PASS { "green" } else { "red" },
+                "commands": commands,
+                "runs": runs,
+                "config": {
+                    "width_cap": cfg.width_cap,
+                    "widths": cfg.widths,
+                    "desc_max": cfg.desc_max,
+                    "per_heading_max": cfg.per_heading_max,
+                    "depth": cfg.depth,
+                },
+                "overrides": changed.iter()
+                    .map(|(k, o, n)| json!({"key": k, "org": o, "repo": n}))
+                    .collect::<Vec<_>>(),
+                "findings": grouped.iter().map(|g| json!({
+                    "rule": g.first.rule, "command": g.first.command, "flag": g.first.flag,
+                    "modes": g.modes, "line": g.first.line, "detail": g.first.detail,
+                })).collect::<Vec<_>>(),
+            })
+        );
+    } else {
+        for g in &grouped {
+            println!("{}", g.render());
+        }
+        for (k, o, n) in &changed {
+            println!("repo override: {k} = {n} (org default {o})");
+        }
+        println!(
+            "cli-help: {commands} command(s), {runs} run(s), {} finding(s)",
+            grouped.len()
+        );
     }
     code
 }
