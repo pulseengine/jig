@@ -42,20 +42,21 @@ env:
   # matched by download and gh attestation verify (exit 0) on 2026-11-27.
   WASMTIME_VERSION: v51.0.0
   WASMTIME_SHA256: a18020674fac4107f329bc9ed720ea9c88e4b30a61e8a527787bcce051123d32
-  # meld v0.70.0 and kiln v0.9.0, x86_64-unknown-linux-musl: from each
+  # meld v0.70.0 and kiln v0.9.1, x86_64-unknown-linux-musl: from each
   # SHA256SUMS.txt, verified with cosign against release.yml@refs/tags/<tag>
-  # and gh attestation verify (exit 0) on 2026-11-27. The same versions as
-  # covalent 2026.11.28 (varve.toml).
+  # and gh attestation verify (exit 0), meld on 2026-11-27, kiln on
+  # 2026-11-28. meld is the version covalent 2026.11.28 carries (varve.toml);
+  # kiln v0.9.1 is newer than that layer's v0.9.0.
   MELD_VERSION: v0.70.0
   MELD_SHA256: 9ff3e50d538a54fd129a8962733b766569218eb9dbb8b9be642b389b6063895c
-  KILN_VERSION: v0.9.0
-  KILN_SHA256: 768a1f5971656635d24b614d48fb50337e810da0e8c8006f8e863d40bc550ec2
+  KILN_VERSION: v0.9.1
+  KILN_SHA256: d4cd934fff5c576734cae96dd78750fb8f9aa10855c40eaddbb997f47f84224e
   # "true" parks the kiln job (every step skips). kiln 0.9.0 hung on the first
   # call on the x86_64 Linux runner in import-map mode (merge-group run
   # 46029354661) and in component mode (jig#40, run job 140648267077), each
-  # stopped at 120 s (kiln#748, the kiln#737 startup cost). Set "false" with
-  # the KILN_VERSION and KILN_SHA256 of kiln v0.9.1, which ships #737.
-  KILN_PARKED: "true"
+  # stopped at 120 s (kiln#748, the kiln#737 startup cost). kiln v0.9.1 ships
+  # #737, so the job runs again.
+  KILN_PARKED: "false"
 
 jobs:
   rivet:
@@ -246,7 +247,7 @@ jobs:
       - name: kiln parked (kiln#748)
         if: env.KILN_PARKED == 'true'
         run: |
-          echo "kiln job parked: kiln 0.9.0 hangs on x86_64 Linux (kiln#748); unpark with the kiln release that ships kiln#737"
+          echo "kiln job parked: KILN_PARKED is true; kiln 0.9.0 hung on x86_64 Linux (kiln#748)"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.KILN_PARKED != 'true'
         with:

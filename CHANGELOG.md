@@ -4,6 +4,12 @@ jig is below 1.0 (REQ-020). Callers pin the record commit that follows each
 signed tag, never the tag commit (docs/releasing.md). Releases before v0.1.6
 are described in their GitHub release notes.
 
+## Unreleased
+
+- CI: the advisory kiln job runs again on kiln v0.9.1, which ships kiln#737
+  and ends the hang on x86_64 Linux (kiln#748). Still advisory and still
+  component mode; no required check changes.
+
 ## v0.1.9 (2026-11-27)
 
 - CI runs jig's wasm32-wasip2 build under wasmtime 51.0.0 and compares
